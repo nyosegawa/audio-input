@@ -4,57 +4,70 @@ struct RecordingOverlay: View {
     let audioLevel: Float
     let status: AppStatus
     let recordingStartTime: Date?
+    let streamingText: String
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Mic icon with pulse animation
-            ZStack {
-                Circle()
-                    .fill(micColor.opacity(0.2))
-                    .frame(width: 36, height: 36)
-                    .scaleEffect(isRecording ? 1.0 + CGFloat(audioLevel) * 0.5 : 1.0)
-                    .animation(.easeInOut(duration: 0.1), value: audioLevel)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                // Mic icon with pulse animation
+                ZStack {
+                    Circle()
+                        .fill(micColor.opacity(0.2))
+                        .frame(width: 36, height: 36)
+                        .scaleEffect(isRecording ? 1.0 + CGFloat(audioLevel) * 0.5 : 1.0)
+                        .animation(.easeInOut(duration: 0.1), value: audioLevel)
 
-                Image(systemName: micIconName)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(micColor)
-            }
+                    Image(systemName: micIconName)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(micColor)
+                }
 
-            // Status text
-            Text(statusText)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.primary)
+                // Status text
+                Text(statusText)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.primary)
 
-            // Elapsed time
-            if isRecording, let start = recordingStartTime {
-                TimelineView(.periodic(from: start, by: 1)) { context in
-                    let elapsed = max(0, Int(context.date.timeIntervalSince(start)))
-                    let minutes = elapsed / 60
-                    let seconds = elapsed % 60
-                    Text(String(format: "%d:%02d", minutes, seconds))
-                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                // Elapsed time
+                if isRecording, let start = recordingStartTime {
+                    TimelineView(.periodic(from: start, by: 1)) { context in
+                        let elapsed = max(0, Int(context.date.timeIntervalSince(start)))
+                        let minutes = elapsed / 60
+                        let seconds = elapsed % 60
+                        Text(String(format: "%d:%02d", minutes, seconds))
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                // Audio level bars
+                if isRecording {
+                    AudioLevelBars(level: audioLevel)
+                        .frame(width: 40, height: 20)
+                }
+
+                // Success text preview
+                if case .success(let text) = status {
+                    Text(text.count > 80 ? String(text.prefix(80)) + "..." : text)
+                        .font(.system(size: 11))
                         .foregroundColor(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: 180, alignment: .leading)
+                }
+
+                if isTranscribing {
+                    ProgressView()
+                        .controlSize(.small)
                 }
             }
 
-            // Audio level bars
-            if isRecording {
-                AudioLevelBars(level: audioLevel)
-                    .frame(width: 40, height: 20)
-            }
-
-            // Success text preview
-            if case .success(let text) = status {
-                Text(text.count > 80 ? String(text.prefix(80)) + "..." : text)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-                    .frame(maxWidth: 180, alignment: .leading)
-            }
-
-            if isTranscribing {
-                ProgressView()
-                    .controlSize(.small)
+            // Streaming transcription text (real-time during recording)
+            if !streamingText.isEmpty && (isRecording || isTranscribing) {
+                Text(streamingText)
+                    .font(.system(size: 12))
+                    .foregroundColor(.primary.opacity(0.85))
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .animation(.easeInOut(duration: 0.15), value: streamingText)
             }
         }
         .padding(.horizontal, 16)

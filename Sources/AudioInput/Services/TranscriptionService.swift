@@ -4,6 +4,14 @@ protocol TranscriptionService: Sendable {
     func transcribe(audioURL: URL, language: String) async throws -> String
 }
 
+protocol StreamingTranscriptionService: TranscriptionService {
+    func transcribeStreaming(
+        audioURL: URL,
+        language: String,
+        onDelta: @MainActor @Sendable (String) -> Void
+    ) async throws -> String
+}
+
 enum TranscriptionError: Error, LocalizedError {
     case invalidAPIKey
     case networkError(Error)

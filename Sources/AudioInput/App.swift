@@ -8,7 +8,7 @@ struct AudioInputApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarView(appState: appDelegate.appState, settings: appDelegate.settings)
+            MenuBarView(appState: appDelegate.appState, settings: appDelegate.settings, whisperTranscriber: appDelegate.whisperTranscriber)
         } label: {
             Image(systemName: appDelegate.appState.isRecording ? "mic.fill" : "mic")
                 .symbolRenderingMode(.hierarchical)
@@ -25,6 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let recorder = AudioRecorder()
     let textInserter = TextInserter()
     let hotkeyManager = HotkeyManager()
+    let whisperTranscriber = WhisperKitTranscriber()
 
     private var overlayWindow: NSWindow?
     private var audioLevelCancellable: AnyCancellable?
@@ -40,6 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         registerHotkey()
         observeAudioLevel()
         observeSilence()
+        loadWhisperModelIfNeeded()
         playStartupSound()
     }
 
@@ -144,6 +146,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func cancelTranscription() {
         transcriptionTask?.cancel()
         transcriptionTask = nil
+        whisperTranscriber.stopStreamingTranscription()
+        appState.streamingText = ""
         if let url = lastRecordingURL {
             recorder.cleanup(url: url)
             lastRecordingURL = nil
@@ -177,8 +181,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             _ = try recorder.startRecording(inputDeviceID: deviceID)
             appState.status = .recording
             appState.recordingStartTime = Date()
+            appState.streamingText = ""
             NSSound.tink?.play()
             showOverlay()
+
+            // Start streaming transcription for local model
+            if settings.provider.isLocal && whisperTranscriber.isModelLoaded {
+                let language = settings.language
+                let recorderRef = recorder
+                whisperTranscriber.startStreamingTranscription(
+                    audioSamplesProvider: { recorderRef.audioSamples },
+                    language: language,
+                    onText: { [weak self] text in
+                        self?.appState.streamingText = text
+                    }
+                )
+            }
         } catch {
             appState.status = .error("録音開始失敗: \(error.localizedDescription)")
             showOverlayBriefly()
@@ -189,9 +207,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard appState.isRecording else { return }
 
         appState.recordingStartTime = nil
+        whisperTranscriber.stopStreamingTranscription()
 
         guard let result = recorder.stopRecording() else {
             appState.status = .error("録音データなし")
+            appState.streamingText = ""
             showOverlayBriefly()
             return
         }
@@ -204,26 +224,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if result.duration < 0.3 {
             recorder.cleanup(url: result.url)
             appState.status = .error("録音が短すぎます")
+            appState.streamingText = ""
             showOverlayBriefly()
             return
         }
 
         appState.status = .transcribing
 
-        let transcriber = createTranscriber()
-        let language = settings.language
         let provider = settings.provider
+        let language = settings.language
         let processingMode = settings.textProcessingMode
         let customPrompt = settings.customPrompt
         let processorKey = settings.openAIKey
+        let useLocal = provider.isLocal && whisperTranscriber.isModelLoaded
 
         transcriptionTask = Task { @MainActor in
             do {
                 try Task.checkCancellation()
-                var text = try await RetryHelper.withRetry {
-                    try await transcriber.transcribe(
+                var text: String
+
+                if useLocal {
+                    text = try await whisperTranscriber.transcribe(
                         audioURL: result.url, language: language)
+                } else {
+                    let transcriber = createTranscriber()
+                    text = try await RetryHelper.withRetry {
+                        try await transcriber.transcribe(
+                            audioURL: result.url, language: language)
+                    }
                 }
+
+                appState.streamingText = ""
 
                 try Task.checkCancellation()
 
@@ -239,7 +270,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     } catch is CancellationError {
                         throw CancellationError()
                     } catch {
-                        // テキスト整形に失敗した場合、元のテキストをそのまま使用
                         NSSound(named: "Basso")?.play()
                     }
                 }
@@ -271,6 +301,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     (error as? TranscriptionError)?.errorDescription
                     ?? error.localizedDescription
                 appState.status = .error(errorMsg)
+                appState.streamingText = ""
                 showOverlayBriefly()
             }
 
@@ -282,10 +313,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func createTranscriber() -> TranscriptionService {
         switch settings.provider {
+        case .local:
+            // Local transcription is handled directly via whisperTranscriber
+            // Fallback to OpenAI if called through this path
+            OpenAITranscriber(apiKey: settings.openAIKey)
         case .openAI:
             OpenAITranscriber(apiKey: settings.openAIKey)
         case .gemini:
             GeminiTranscriber(apiKey: settings.geminiKey)
+        }
+    }
+
+    // MARK: - WhisperKit
+
+    func loadWhisperModelIfNeeded() {
+        guard settings.provider == .local else { return }
+        let model = settings.whisperModel
+
+        Task { @MainActor in
+            do {
+                try await whisperTranscriber.ensureModelReady(model) { progress in
+                    self.appState.modelDownloadState = .downloading(progress)
+                }
+                self.appState.modelDownloadState = .downloaded
+            } catch {
+                self.appState.modelDownloadState = .error(error.localizedDescription)
+            }
         }
     }
 
@@ -303,7 +356,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 rootView: OverlayContainer(appState: appState))
 
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 280, height: 52),
+                contentRect: NSRect(x: 0, y: 0, width: 380, height: 80),
                 styleMask: [.borderless],
                 backing: .buffered,
                 defer: false
@@ -322,7 +375,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }) ?? NSScreen.main
             if let screen = mouseScreen {
                 let screenFrame = screen.visibleFrame
-                let x = screenFrame.midX - 140
+                let x = screenFrame.midX - 190
                 let y = screenFrame.maxY - 70
                 window.setFrameOrigin(NSPoint(x: x, y: y))
             }
@@ -337,7 +390,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }) ?? NSScreen.main
             if let screen = mouseScreen {
                 let screenFrame = screen.visibleFrame
-                let x = screenFrame.midX - 140
+                let x = screenFrame.midX - 190
                 let y = screenFrame.maxY - 70
                 window.setFrameOrigin(NSPoint(x: x, y: y))
             }
@@ -378,7 +431,8 @@ struct OverlayContainer: View {
         RecordingOverlay(
             audioLevel: appState.audioLevel,
             status: appState.status,
-            recordingStartTime: appState.recordingStartTime
+            recordingStartTime: appState.recordingStartTime,
+            streamingText: appState.streamingText
         )
     }
 }

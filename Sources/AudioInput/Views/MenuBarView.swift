@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct MenuBarView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var settings: AppSettings
+    var whisperTranscriber: WhisperKitTranscriber
     @State private var showSettings = false
     @State private var showHistory = false
 
@@ -45,6 +46,22 @@ struct MenuBarView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
+
+            // Model download status (local only)
+            if settings.provider.isLocal {
+                if case .downloading(let progress) = appState.modelDownloadState {
+                    HStack {
+                        ProgressView(value: progress)
+                            .frame(width: 100)
+                        Text("モデルDL中 \(Int(progress * 100))%")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                }
+            }
 
             // Hotkey info
             HStack {
@@ -139,7 +156,7 @@ struct MenuBarView: View {
         }
         .frame(width: 280)
         .sheet(isPresented: $showSettings) {
-            SettingsView(settings: settings)
+            SettingsView(settings: settings, appState: appState, whisperTranscriber: whisperTranscriber)
         }
         .sheet(isPresented: $showHistory) {
             HistoryView(records: appState.history, onExport: {

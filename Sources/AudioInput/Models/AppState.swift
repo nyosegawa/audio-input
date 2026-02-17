@@ -26,11 +26,20 @@ struct TranscriptionRecord: Identifiable, Codable, Sendable {
     }
 }
 
+enum ModelDownloadState: Sendable {
+    case notDownloaded
+    case downloading(Double)
+    case downloaded
+    case error(String)
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var status: AppStatus = .idle
     @Published var audioLevel: Float = 0.0
     @Published var recordingStartTime: Date? = nil
+    @Published var streamingText: String = ""
+    @Published var modelDownloadState: ModelDownloadState = .notDownloaded
     @Published var history: [TranscriptionRecord] = []
     @Published var micPermission: PermissionStatus = .notDetermined
     @Published var accessibilityPermission: PermissionStatus = .notDetermined

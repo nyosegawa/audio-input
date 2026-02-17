@@ -4,6 +4,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject var appState: AppState
+    @ObservedObject var whisperTranscriber: WhisperKitTranscriber
     @State private var inputDevices: [AudioInputDevice] = []
 
     var body: some View {
@@ -25,7 +27,18 @@ struct SettingsView: View {
                         Text(provider.displayName).tag(provider)
                     }
                 }
-                .help("OpenAI: 高精度・低レイテンシ ($0.003/分)。Gemini: 無料枠あり・やや遅い")
+                .help("ローカル: オフライン・リアルタイム表示・無料。OpenAI: 高精度 ($0.003/分)。Gemini: 無料枠あり")
+
+                if settings.provider.isLocal {
+                    Picker("モデル", selection: $settings.whisperModel) {
+                        ForEach(WhisperModel.allCases, id: \.self) { model in
+                            Text(model.displayName).tag(model)
+                        }
+                    }
+                    .help("大きいモデルほど精度が高いですが、メモリと処理時間が増えます。M2ではLarge v3 Turboを推奨")
+
+                    modelStatusView
+                }
 
                 Picker("言語", selection: $settings.language) {
                     Text("日本語").tag("ja")
@@ -108,8 +121,66 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Model Status View
+
+    @ViewBuilder
+    private var modelStatusView: some View {
+        let model = settings.whisperModel
+        let isDownloaded = whisperTranscriber.isModelDownloaded(model)
+
+        if isDownloaded {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.system(size: 12))
+                Text("モデルダウンロード済み")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                if whisperTranscriber.isModelLoaded {
+                    Text("(読み込み済み)")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                }
+            }
+        } else if case .downloading(let progress) = appState.modelDownloadState {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    ProgressView(value: progress)
+                    Text("\(Int(progress * 100))%")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .monospacedDigit()
+                }
+                Text("モデルをダウンロード中...")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        } else if case .error(let msg) = appState.modelDownloadState {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.red)
+                    .font(.system(size: 12))
+                Text(msg)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .lineLimit(2)
+            }
+        } else {
+            HStack {
+                Image(systemName: "arrow.down.circle")
+                    .foregroundColor(.orange)
+                    .font(.system(size: 12))
+                Text("モデル未ダウンロード（初回使用時に自動ダウンロード）")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
     private var dynamicHeight: CGFloat {
-        var height: CGFloat = 500
+        var height: CGFloat = 520
+        if settings.provider.isLocal { height += 80 }
         if settings.textProcessingMode == .custom { height += 120 }
         if settings.recordingMode == .toggle { height += 30 }
         if settings.recordingMode == .toggle && settings.silenceDetectionEnabled { height += 30 }

@@ -27,10 +27,20 @@ final class AudioRecorder: ObservableObject {
     private var audioFile: AVAudioFile?
     private(set) var recordingURL: URL?
     private var startTime: Date?
+    private nonisolated let audioSamplesLock = NSLock()
+    private nonisolated(unsafe) var _audioSamples: [Float] = []
 
     @Published var isRecording = false
     @Published var audioLevel: Float = 0.0
     @Published var rawRMS: Float = 0.0
+
+    /// Get a copy of accumulated 16kHz mono float samples for streaming transcription
+    /// Thread-safe: can be called from any isolation context
+    nonisolated var audioSamples: [Float] {
+        audioSamplesLock.lock()
+        defer { audioSamplesLock.unlock() }
+        return _audioSamples
+    }
 
     var recordingDuration: TimeInterval {
         guard let start = startTime else { return 0 }
@@ -125,6 +135,10 @@ final class AudioRecorder: ObservableObject {
     // MARK: - Recording
 
     func startRecording(inputDeviceID: AudioDeviceID? = nil) throws -> URL {
+        audioSamplesLock.lock()
+        _audioSamples.removeAll()
+        audioSamplesLock.unlock()
+
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("audio_input_\(UUID().uuidString).wav")
 
@@ -208,6 +222,15 @@ final class AudioRecorder: ObservableObject {
 
             if error == nil, outputBuffer.frameLength > 0 {
                 try? self?.audioFile?.write(from: outputBuffer)
+
+                // Accumulate 16kHz float samples for streaming transcription
+                if let floatData = outputBuffer.floatChannelData?[0] {
+                    let count = Int(outputBuffer.frameLength)
+                    let samples = Array(UnsafeBufferPointer(start: floatData, count: count))
+                    self?.audioSamplesLock.lock()
+                    self?._audioSamples.append(contentsOf: samples)
+                    self?.audioSamplesLock.unlock()
+                }
             }
         }
 
@@ -243,6 +266,9 @@ final class AudioRecorder: ObservableObject {
         audioLevel = 0
         rawRMS = 0
         startTime = nil
+        audioSamplesLock.lock()
+        _audioSamples.removeAll()
+        audioSamplesLock.unlock()
 
         return (url: url, duration: duration)
     }

@@ -2,13 +2,35 @@ import AudioToolbox
 import Foundation
 
 enum TranscriptionProvider: String, CaseIterable, Codable, Sendable {
+    case local = "local"
     case openAI = "openai"
     case gemini = "gemini"
 
     var displayName: String {
         switch self {
+        case .local: "ローカル (WhisperKit)"
         case .openAI: "OpenAI (gpt-4o-mini-transcribe)"
         case .gemini: "Gemini 2.5 Flash"
+        }
+    }
+
+    var isLocal: Bool {
+        self == .local
+    }
+}
+
+enum WhisperModel: String, CaseIterable, Sendable {
+    case tiny = "openai_whisper-tiny"
+    case base = "openai_whisper-base"
+    case small = "openai_whisper-small"
+    case largeTurbo = "openai_whisper-large-v3_turbo"
+
+    var displayName: String {
+        switch self {
+        case .tiny: "Tiny (~40MB, 高速・低精度)"
+        case .base: "Base (~140MB, バランス)"
+        case .small: "Small (~460MB, 高精度)"
+        case .largeTurbo: "Large v3 Turbo (~800MB, 最高精度)"
         }
     }
 }
@@ -74,6 +96,9 @@ final class AppSettings: ObservableObject {
     @Published var silenceThreshold: Float {
         didSet { UserDefaults.standard.set(silenceThreshold, forKey: "silenceThreshold") }
     }
+    @Published var whisperModel: WhisperModel {
+        didSet { UserDefaults.standard.set(whisperModel.rawValue, forKey: "whisperModel") }
+    }
     @Published var launchAtLogin: Bool {
         didSet { UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin") }
     }
@@ -81,7 +106,7 @@ final class AppSettings: ObservableObject {
     private init() {
         self.openAIKey = UserDefaults.standard.string(forKey: "openAIKey") ?? ""
         self.geminiKey = UserDefaults.standard.string(forKey: "geminiKey") ?? ""
-        self.provider = TranscriptionProvider(rawValue: UserDefaults.standard.string(forKey: "provider") ?? "") ?? .openAI
+        self.provider = TranscriptionProvider(rawValue: UserDefaults.standard.string(forKey: "provider") ?? "") ?? .local
         self.language = UserDefaults.standard.string(forKey: "language") ?? "ja"
         self.recordingMode = RecordingMode(rawValue: UserDefaults.standard.string(forKey: "recordingMode") ?? "") ?? .pushToTalk
         self.hotkeyCode = UInt32(UserDefaults.standard.integer(forKey: "hotkeyCode"))
@@ -95,6 +120,7 @@ final class AppSettings: ObservableObject {
         self.silenceDuration = storedSilenceDuration > 0 ? storedSilenceDuration : 2.0
         let storedSilenceThreshold = UserDefaults.standard.float(forKey: "silenceThreshold")
         self.silenceThreshold = storedSilenceThreshold > 0 ? storedSilenceThreshold : 0.01
+        self.whisperModel = WhisperModel(rawValue: UserDefaults.standard.string(forKey: "whisperModel") ?? "") ?? .largeTurbo
         self.launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
 
         // Default hotkey: Option+Space

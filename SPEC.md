@@ -10,7 +10,8 @@
 - **UI:** SwiftUI (MenuBarExtra)
 - **ビルド:** Swift Package Manager (Xcode IDE不要)
 - **音声録音:** AVAudioEngine (16kHz WAV)
-- **音声認識:** OpenAI gpt-4o-mini-transcribe (デフォルト) / Gemini 2.5 Flash (選択可)
+- **音声認識:** WhisperKit ローカルモデル (デフォルト) / OpenAI gpt-4o-mini-transcribe / Gemini 2.5 Flash
+- **ローカルモデル:** WhisperKit 0.15.0 (Apple Silicon最適化、リアルタイムストリーミング)
 - **デバイス選択:** CoreAudio API (AudioObjectGetPropertyData / AudioUnitSetProperty)
 - **テキスト整形:** OpenAI gpt-4o-mini (6プリセット + カスタムプロンプト)
 - **テキスト挿入:** NSPasteboard + CGEvent (Cmd+V) + changeCount検知スマート復元
@@ -26,10 +27,11 @@ Sources/AudioInput/
 │   ├── AppState.swift         # 全体状態管理 + 履歴永続化 (JSON)
 │   └── Settings.swift         # UserDefaults永続化 + .envファイル読み込み
 ├── Services/
-│   ├── AudioRecorder.swift    # AVAudioEngine録音 + 音声レベル監視
+│   ├── AudioRecorder.swift    # AVAudioEngine録音 + 音声レベル監視 + フロートサンプル蓄積
 │   ├── HotkeyManager.swift    # グローバルホットキー (Carbon API)
 │   ├── PermissionChecker.swift # マイク・アクセシビリティ権限チェック
 │   ├── TranscriptionService.swift  # Protocol定義
+│   ├── WhisperKitTranscriber.swift # WhisperKitローカルモデル (ストリーミング対応)
 │   ├── OpenAITranscriber.swift     # OpenAI API (multipart upload)
 │   ├── GeminiTranscriber.swift     # Gemini API (base64 inline)
 │   ├── TextProcessor.swift    # AI整形 (6プリセット + カスタム)
@@ -94,8 +96,14 @@ Sources/AudioInput/
 34. 入力デバイス切断時のシステムデフォルトフォールバック
 35. 設定画面の全項目にヘルプテキスト追加
 
-### Phase 6 - Future
-33. WhisperKit統合 (ローカルモデル)
+### Phase 6 (ローカルモデル + リアルタイム表示) - Done
+36. WhisperKit統合 (ローカルオンデバイス音声認識、Apple Silicon最適化)
+37. リアルタイムストリーミング表示 (録音中に仮説テキストをオーバーレイ表示)
+38. 4モデルサイズ選択 (Tiny/Base/Small/Large-v3-Turbo)
+39. 自動モデルダウンロード + 進捗表示 (初回使用時)
+40. ローカルモデルをデフォルトプロバイダに設定 (オフライン・無料・低レイテンシ)
+41. 録音中の16kHzフロートサンプル蓄積 (AudioRecorder拡張)
+42. 1.5秒間隔のストリーミング転写ループ (WhisperKitTranscriber)
 
 ## API検証結果
 
