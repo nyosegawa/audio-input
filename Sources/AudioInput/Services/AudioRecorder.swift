@@ -23,7 +23,7 @@ enum RecordingError: Error, LocalizedError {
 final class AudioRecorder: ObservableObject {
     private var audioEngine: AVAudioEngine?
     private var audioFile: AVAudioFile?
-    private var recordingURL: URL?
+    private(set) var recordingURL: URL?
     private var startTime: Date?
 
     @Published var isRecording = false
@@ -210,7 +210,14 @@ final class AudioRecorder: ObservableObject {
         }
 
         engine.prepare()
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            engine.inputNode.removeTap(onBus: 0)
+            audioFile = nil
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
 
         self.audioEngine = engine
         self.recordingURL = url

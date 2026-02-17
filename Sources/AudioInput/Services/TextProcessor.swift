@@ -70,6 +70,23 @@ enum TextProcessingMode: String, CaseIterable, Sendable {
     }
 }
 
+enum TextProcessingError: Error, LocalizedError {
+    case networkError(Error)
+    case apiError(String)
+    case invalidResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .networkError(let error):
+            return "テキスト整形ネットワークエラー: \(error.localizedDescription)"
+        case .apiError(let message):
+            return "テキスト整形APIエラー: \(message)"
+        case .invalidResponse:
+            return "テキスト整形: 不正なレスポンス"
+        }
+    }
+}
+
 struct TextProcessor: Sendable {
     let apiKey: String
 
@@ -103,18 +120,30 @@ struct TextProcessor: Sendable {
         request.httpBody = jsonData
         request.timeoutInterval = 15
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw TextProcessingError.networkError(error)
+        }
 
-        guard let httpResponse = response as? HTTPURLResponse,
-            httpResponse.statusCode == 200
-        else { return text }
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw TextProcessingError.invalidResponse
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw TextProcessingError.apiError("HTTP \(httpResponse.statusCode): \(body)")
+        }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let choices = json["choices"] as? [[String: Any]],
             let first = choices.first,
             let message = first["message"] as? [String: Any],
             let content = message["content"] as? String
-        else { return text }
+        else {
+            throw TextProcessingError.invalidResponse
+        }
 
         let processed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         return processed.isEmpty ? text : processed

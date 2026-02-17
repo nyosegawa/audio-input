@@ -31,6 +31,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var silenceDetectionCancellable: AnyCancellable?
     private var silenceStartTime: Date?
     private var transcriptionTask: Task<Void, Never>?
+    private var lastRecordingURL: URL?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -143,6 +144,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func cancelTranscription() {
         transcriptionTask?.cancel()
         transcriptionTask = nil
+        if let url = lastRecordingURL {
+            recorder.cleanup(url: url)
+            lastRecordingURL = nil
+        }
         appState.status = .error("キャンセルしました")
         showOverlayBriefly()
     }
@@ -182,6 +187,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        lastRecordingURL = result.url
+
         NSSound.pop?.play()
 
         // Skip very short recordings (< 0.3 seconds)
@@ -216,8 +223,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     appState.status = .processing
                     let processor = TextProcessor(apiKey: processorKey)
                     let inputText = text
-                    text = try await RetryHelper.withRetry {
-                        try await processor.process(text: inputText, mode: processingMode, customPrompt: customPrompt)
+                    do {
+                        text = try await RetryHelper.withRetry {
+                            try await processor.process(text: inputText, mode: processingMode, customPrompt: customPrompt)
+                        }
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        // テキスト整形に失敗した場合、元のテキストをそのまま使用
+                        NSSound(named: "Basso")?.play()
                     }
                 }
 
@@ -252,6 +266,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             recorder.cleanup(url: result.url)
+            lastRecordingURL = nil
             transcriptionTask = nil
         }
     }
@@ -292,8 +307,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.isReleasedWhenClosed = false
             window.ignoresMouseEvents = true
 
-            // Position at top center of main screen
-            if let screen = NSScreen.main {
+            // Position at top center of the screen containing the mouse pointer
+            let mouseScreen = NSScreen.screens.first(where: {
+                NSMouseInRect(NSEvent.mouseLocation, $0.frame, false)
+            }) ?? NSScreen.main
+            if let screen = mouseScreen {
                 let screenFrame = screen.visibleFrame
                 let x = screenFrame.midX - 140
                 let y = screenFrame.maxY - 70
@@ -301,6 +319,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             overlayWindow = window
+        }
+
+        // Update position to current active screen each time
+        if let window = overlayWindow {
+            let mouseScreen = NSScreen.screens.first(where: {
+                NSMouseInRect(NSEvent.mouseLocation, $0.frame, false)
+            }) ?? NSScreen.main
+            if let screen = mouseScreen {
+                let screenFrame = screen.visibleFrame
+                let x = screenFrame.midX - 140
+                let y = screenFrame.maxY - 70
+                window.setFrameOrigin(NSPoint(x: x, y: y))
+            }
         }
 
         overlayWindow?.orderFront(nil)

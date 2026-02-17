@@ -1,5 +1,7 @@
+import AppKit
 import Carbon
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MenuBarView: View {
     @ObservedObject var appState: AppState
@@ -130,7 +132,9 @@ struct MenuBarView: View {
             SettingsView(settings: settings)
         }
         .sheet(isPresented: $showHistory) {
-            HistoryView(records: appState.history)
+            HistoryView(records: appState.history, onExport: {
+                exportHistory()
+            })
         }
     }
 
@@ -142,6 +146,32 @@ struct MenuBarView: View {
         case .success: .green
         case .error: .red
         }
+    }
+
+    private func exportHistory() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = "audio-input-history.txt"
+        panel.title = "履歴をエクスポート"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+
+        var content = "AudioInput 転写履歴\n"
+        content += "エクスポート日時: \(dateFormatter.string(from: Date()))\n"
+        content += "件数: \(appState.history.count)\n"
+        content += String(repeating: "=", count: 60) + "\n\n"
+
+        for record in appState.history {
+            content += "[\(dateFormatter.string(from: record.date))] "
+            content += "(\(String(format: "%.1f", record.duration))秒, \(record.provider.rawValue))\n"
+            content += record.text + "\n"
+            content += String(repeating: "-", count: 40) + "\n"
+        }
+
+        try? content.write(to: url, atomically: true, encoding: .utf8)
     }
 
     private var hotkeyDescription: String {
