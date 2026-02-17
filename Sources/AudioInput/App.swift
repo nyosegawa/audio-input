@@ -30,9 +30,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var audioLevelCancellable: AnyCancellable?
     private var silenceDetectionCancellable: AnyCancellable?
     private var silenceStartTime: Date?
+    private var transcriptionTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        appState.loadHistory()
+        checkPermissions()
         registerHotkey()
         observeAudioLevel()
         observeSilence()
@@ -44,6 +47,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioLevelCancellable?.cancel()
         silenceDetectionCancellable?.cancel()
         dismissOverlay()
+    }
+
+    // MARK: - Permissions
+
+    private func checkPermissions() {
+        appState.accessibilityPermission = PermissionChecker.accessibilityStatus()
+        appState.micPermission = PermissionChecker.microphoneStatus()
+
+        if case .notDetermined = appState.micPermission {
+            Task {
+                let granted = await PermissionChecker.requestMicrophoneAccess()
+                appState.micPermission = granted ? .granted : .denied
+            }
+        }
+
+        if case .denied = appState.accessibilityPermission {
+            PermissionChecker.requestAccessibilityAccess()
+        }
     }
 
     // MARK: - Audio Level Observation
@@ -92,6 +113,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             modifiers: settings.hotkeyModifiers,
             onKeyDown: { [weak self] in
                 guard let self = self else { return }
+                // Cancel transcription if in progress
+                if self.appState.isTranscribing {
+                    self.cancelTranscription()
+                    return
+                }
                 switch self.settings.recordingMode {
                 case .pushToTalk:
                     self.startRecording()
@@ -114,8 +140,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Recording
 
+    private func cancelTranscription() {
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+        appState.status = .error("キャンセルしました")
+        showOverlayBriefly()
+    }
+
     private func startRecording() {
         guard !appState.isRecording else { return }
+
+        // Check microphone permission
+        let micStatus = PermissionChecker.microphoneStatus()
+        appState.micPermission = micStatus
+        if case .denied = micStatus {
+            appState.status = .error("マイクの使用が許可されていません。システム設定で許可してください")
+            showOverlayBriefly()
+            return
+        }
 
         do {
             _ = try recorder.startRecording(inputDeviceID: settings.selectedInputDeviceID)
@@ -159,17 +201,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let customPrompt = settings.customPrompt
         let processorKey = settings.openAIKey
 
-        Task { @MainActor in
+        transcriptionTask = Task { @MainActor in
             do {
-                var text = try await transcriber.transcribe(
-                    audioURL: result.url, language: language)
+                try Task.checkCancellation()
+                var text = try await RetryHelper.withRetry {
+                    try await transcriber.transcribe(
+                        audioURL: result.url, language: language)
+                }
+
+                try Task.checkCancellation()
 
                 // Apply text processing if enabled
                 if processingMode != .none {
                     appState.status = .processing
                     let processor = TextProcessor(apiKey: processorKey)
-                    text = try await processor.process(text: text, mode: processingMode, customPrompt: customPrompt)
+                    let inputText = text
+                    text = try await RetryHelper.withRetry {
+                        try await processor.process(text: inputText, mode: processingMode, customPrompt: customPrompt)
+                    }
                 }
+
+                try Task.checkCancellation()
 
                 let record = TranscriptionRecord(
                     text: text,
@@ -189,6 +241,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         dismissOverlay()
                     }
                 }
+            } catch is CancellationError {
+                // Already handled in cancelTranscription()
             } catch {
                 let errorMsg =
                     (error as? TranscriptionError)?.errorDescription
@@ -198,6 +252,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             recorder.cleanup(url: result.url)
+            transcriptionTask = nil
         }
     }
 

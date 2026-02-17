@@ -1,7 +1,7 @@
 import AudioToolbox
 import Foundation
 
-enum TranscriptionProvider: String, CaseIterable, Sendable {
+enum TranscriptionProvider: String, CaseIterable, Codable, Sendable {
     case openAI = "openai"
     case gemini = "gemini"
 

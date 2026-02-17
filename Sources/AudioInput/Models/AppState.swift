@@ -10,12 +10,20 @@ enum AppStatus: Sendable {
     case error(String)
 }
 
-struct TranscriptionRecord: Identifiable, Sendable {
-    let id = UUID()
+struct TranscriptionRecord: Identifiable, Codable, Sendable {
+    let id: UUID
     let text: String
     let date: Date
     let duration: TimeInterval
     let provider: TranscriptionProvider
+
+    init(text: String, date: Date, duration: TimeInterval, provider: TranscriptionProvider) {
+        self.id = UUID()
+        self.text = text
+        self.date = date
+        self.duration = duration
+        self.provider = provider
+    }
 }
 
 @MainActor
@@ -24,6 +32,8 @@ final class AppState: ObservableObject {
     @Published var audioLevel: Float = 0.0
     @Published var recordingStartTime: Date? = nil
     @Published var history: [TranscriptionRecord] = []
+    @Published var micPermission: PermissionStatus = .notDetermined
+    @Published var accessibilityPermission: PermissionStatus = .notDetermined
 
     var isRecording: Bool {
         if case .recording = status { return true }
@@ -56,5 +66,28 @@ final class AppState: ObservableObject {
         if history.count > 50 {
             history.removeLast()
         }
+        saveHistory()
+    }
+
+    // MARK: - History Persistence
+
+    private static var historyFileURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("AudioInput")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("history.json")
+    }
+
+    func saveHistory(to url: URL? = nil) {
+        let fileURL = url ?? Self.historyFileURL
+        guard let data = try? JSONEncoder().encode(history) else { return }
+        try? data.write(to: fileURL, options: .atomic)
+    }
+
+    func loadHistory(from url: URL? = nil) {
+        let fileURL = url ?? Self.historyFileURL
+        guard let data = try? Data(contentsOf: fileURL),
+              let records = try? JSONDecoder().decode([TranscriptionRecord].self, from: data) else { return }
+        history = records
     }
 }

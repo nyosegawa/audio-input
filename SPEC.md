@@ -23,23 +23,25 @@
 Sources/AudioInput/
 ├── App.swift                  # @main, MenuBarExtra, AppDelegate
 ├── Models/
-│   ├── AppState.swift         # 全体状態管理 (idle/recording/transcribing/processing/error)
+│   ├── AppState.swift         # 全体状態管理 + 履歴永続化 (JSON)
 │   └── Settings.swift         # UserDefaults永続化 + .envファイル読み込み
 ├── Services/
 │   ├── AudioRecorder.swift    # AVAudioEngine録音 + 音声レベル監視
 │   ├── HotkeyManager.swift    # グローバルホットキー (Carbon API)
+│   ├── PermissionChecker.swift # マイク・アクセシビリティ権限チェック
 │   ├── TranscriptionService.swift  # Protocol定義
 │   ├── OpenAITranscriber.swift     # OpenAI API (multipart upload)
 │   ├── GeminiTranscriber.swift     # Gemini API (base64 inline)
-│   ├── TextProcessor.swift    # AI整形 (6プリセット)
+│   ├── TextProcessor.swift    # AI整形 (6プリセット + カスタム)
 │   └── TextInserter.swift     # クリップボード+Cmd+V+復元
 ├── Views/
-│   ├── MenuBarView.swift      # メニューバードロップダウン
+│   ├── MenuBarView.swift      # メニューバードロップダウン + 権限警告
 │   ├── RecordingOverlay.swift # フローティングオーバーレイ + 音声レベルバー
 │   ├── SettingsView.swift     # 設定画面
 │   └── HistoryView.swift      # 転写履歴 (最新50件)
 └── Utilities/
     ├── MultipartFormData.swift # HTTP multipart builder
+    ├── RetryHelper.swift      # 指数バックオフリトライ
     └── KeyCodes.swift         # キーコード + modifier定数
 ```
 
@@ -74,8 +76,14 @@ Sources/AudioInput/
 20. 録音経過時間表示 (オーバーレイにタイマー表示、TimelineView)
 21. 無音検出による自動停止 (トグルモード時、設定可能な無音時間で自動停止)
 
-### Phase 5 - Future
-22. WhisperKit統合 (ローカルモデル)
+### Phase 5 - Done
+22. 転写履歴の永続化 (Application Support/AudioInput/history.json)
+23. マイク・アクセシビリティ権限チェック (起動時 + 録音開始時)
+24. APIリトライ (指数バックオフ、ネットワークエラー/429/5xx対応、最大3回)
+25. 転写キャンセル (転写中/処理中にホットキーでキャンセル)
+
+### Phase 6 - Future
+26. WhisperKit統合 (ローカルモデル)
 
 ## API検証結果
 
