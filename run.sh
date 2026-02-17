@@ -15,11 +15,7 @@ while [ $i -lt $MAX ]; do
   i=$((i+1))
   echo "=== Loop $i/$MAX - $(date) ===" >> "$LOG"
   claude --dangerously-skip-permissions \
-    -p "$(cat PROMPT.md)" \
-    --continue \
-    2>&1 >> "$LOG"
+    < PROMPT.md >> "$LOG" 2>&1
   echo "=== Exit code: $? ===" >> "$LOG"
   sleep 5
 done
-
-echo "=== Completed $MAX loops ===" >> "$LOG"
