@@ -16,6 +16,7 @@ struct SettingsView: View {
                             .tag(device.id as AudioDeviceID?)
                     }
                 }
+                .help("録音に使用するマイクを選択します。デバイスが切断された場合はシステムデフォルトが使用されます")
             }
 
             Section("音声認識") {
@@ -24,12 +25,14 @@ struct SettingsView: View {
                         Text(provider.displayName).tag(provider)
                     }
                 }
+                .help("OpenAI: 高精度・低レイテンシ ($0.003/分)。Gemini: 無料枠あり・やや遅い")
 
                 Picker("言語", selection: $settings.language) {
                     Text("日本語").tag("ja")
                     Text("English").tag("en")
                     Text("自動検出").tag("auto")
                 }
+                .help("言語を指定すると認識精度が向上します。多言語を混在する場合は「自動検出」を選択してください")
             }
 
             Section("テキスト処理") {
@@ -38,6 +41,7 @@ struct SettingsView: View {
                         Text(mode.displayName).tag(mode)
                     }
                 }
+                .help("「そのまま」以外を選択すると、AIが文字起こし結果を整形します。追加のAPI呼び出し（OpenAI gpt-4o-mini）が発生します")
 
                 if settings.textProcessingMode == .custom {
                     VStack(alignment: .leading, spacing: 4) {
@@ -49,12 +53,15 @@ struct SettingsView: View {
                             .frame(height: 100)
                             .border(Color.secondary.opacity(0.3))
                     }
+                    .help("AIに送るシステムプロンプトを自由に設定できます。例:「英語に翻訳してください」「箇条書きにまとめてください」")
                 }
             }
 
             Section("APIキー") {
                 SecureField("OpenAI API Key", text: $settings.openAIKey)
+                    .help("OpenAIの音声認識とテキスト整形に使用します。.envファイルでも設定可能です")
                 SecureField("Gemini API Key", text: $settings.geminiKey)
+                    .help("Gemini音声認識に使用します。.envファイルでも設定可能です")
             }
 
             Section("録音") {
@@ -63,9 +70,11 @@ struct SettingsView: View {
                         Text(mode.displayName).tag(mode)
                     }
                 }
+                .help("Push to Talk: ホットキーを押している間だけ録音。Toggle: 1回押して開始、もう1回押して停止")
 
                 if settings.recordingMode == .toggle {
                     Toggle("無音検出で自動停止", isOn: $settings.silenceDetectionEnabled)
+                        .help("録音中に無音状態が続くと自動的に停止して文字起こしを開始します")
 
                     if settings.silenceDetectionEnabled {
                         Picker("無音時間", selection: $settings.silenceDuration) {
@@ -74,6 +83,7 @@ struct SettingsView: View {
                             Text("3秒").tag(3.0)
                             Text("5秒").tag(5.0)
                         }
+                        .help("無音がこの秒数続くと自動停止します。背景ノイズが多い環境では長めに設定してください")
                     }
                 }
 
@@ -83,10 +93,12 @@ struct SettingsView: View {
                     Text(hotkeyDescription)
                         .foregroundColor(.secondary)
                 }
+                .help("現在のホットキー設定です。変更するにはアプリの再設定が必要です")
             }
 
             Section("一般") {
                 Toggle("ログイン時に起動", isOn: $settings.launchAtLogin)
+                    .help("macOS起動時にAudioInputを自動的に起動します")
             }
         }
         .formStyle(.grouped)

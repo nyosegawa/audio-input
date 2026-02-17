@@ -164,8 +164,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Verify selected device is still available, fallback to system default
+        var deviceID = settings.selectedInputDeviceID
+        if let id = deviceID {
+            let available = AudioRecorder.availableInputDevices()
+            if !available.contains(where: { $0.id == id }) {
+                deviceID = nil
+            }
+        }
+
         do {
-            _ = try recorder.startRecording(inputDeviceID: settings.selectedInputDeviceID)
+            _ = try recorder.startRecording(inputDeviceID: deviceID)
             appState.status = .recording
             appState.recordingStartTime = Date()
             NSSound.tink?.play()

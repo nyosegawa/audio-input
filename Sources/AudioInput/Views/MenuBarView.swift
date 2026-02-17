@@ -57,29 +57,39 @@ struct MenuBarView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
 
-            // Permission warnings
+            // Permission warnings (clickable to open System Settings)
             if case .denied = appState.micPermission {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                        .font(.system(size: 11))
-                    Text("マイクが許可されていません")
-                        .font(.system(size: 11))
-                        .foregroundColor(.orange)
+                Button {
+                    PermissionChecker.openMicrophoneSettings()
+                } label: {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                            .font(.system(size: 11))
+                        Text("マイクが未許可 — クリックで設定を開く")
+                            .font(.system(size: 11))
+                            .foregroundColor(.orange)
+                    }
                 }
+                .buttonStyle(.borderless)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
             }
 
             if case .denied = appState.accessibilityPermission {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                        .font(.system(size: 11))
-                    Text("アクセシビリティが未許可")
-                        .font(.system(size: 11))
-                        .foregroundColor(.orange)
+                Button {
+                    PermissionChecker.openAccessibilitySettings()
+                } label: {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                            .font(.system(size: 11))
+                        Text("アクセシビリティが未許可 — クリックで設定を開く")
+                            .font(.system(size: 11))
+                            .foregroundColor(.orange)
+                    }
                 }
+                .buttonStyle(.borderless)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
             }

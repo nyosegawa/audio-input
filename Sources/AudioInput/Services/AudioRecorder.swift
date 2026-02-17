@@ -11,10 +11,12 @@ struct AudioInputDevice: Identifiable, Hashable, Sendable {
 
 enum RecordingError: Error, LocalizedError {
     case deviceSelectionFailed
+    case deviceNotAvailable
 
     var errorDescription: String? {
         switch self {
         case .deviceSelectionFailed: "入力デバイスの設定に失敗しました"
+        case .deviceNotAvailable: "選択した入力デバイスが見つかりません。システムデフォルトを使用します"
         }
     }
 }
