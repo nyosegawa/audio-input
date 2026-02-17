@@ -2,8 +2,8 @@
 
 ## Core Principles
 
-- **Do NOT maintain backward compatibility** unless explicitly requested. Break things boldly.
-- **Keep this file under 20-30 lines of instructions.**
+- **Do NOT maintain backward compatibility** unless explicitly requested.
+- **Keep this file under 20-30 lines.**
 
 ## Project Overview
 
@@ -14,14 +14,11 @@
 ## Commands
 
 ```bash
-# Build
-cd /Users/sakasegawa/src/github.com/nyosegawa/audio-input && swift build
-
-# Test
-cd /Users/sakasegawa/src/github.com/nyosegawa/audio-input && swift test
-
-# Run
-cd /Users/sakasegawa/src/github.com/nyosegawa/audio-input && swift run AudioInput
+swift build                              # Build
+swift build -c release                   # Release build
+./scripts/build-app.sh                   # Create .app bundle
+open build/AudioInput.app                # Run app
+./scripts/integration-test.sh            # API integration tests
 ```
 
 ## Code Conventions
@@ -32,4 +29,5 @@ cd /Users/sakasegawa/src/github.com/nyosegawa/audio-input && swift run AudioInpu
 
 ## Architecture
 
-See `SPEC.md` for detailed architecture. Key: `Sources/AudioInput/` with Services/, Views/, Models/ structure.
+`Sources/AudioInput/` — Models/, Services/, Views/, Utilities/
+See `SPEC.md` for full architecture. See `MARKET_RESEARCH.md` for research.
