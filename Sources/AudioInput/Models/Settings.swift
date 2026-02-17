@@ -7,7 +7,7 @@ enum TranscriptionProvider: String, CaseIterable, Sendable {
     var displayName: String {
         switch self {
         case .openAI: "OpenAI (gpt-4o-mini-transcribe)"
-        case .gemini: "Gemini 2.0 Flash"
+        case .gemini: "Gemini 2.5 Flash"
         }
     }
 }

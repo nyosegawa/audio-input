@@ -41,10 +41,10 @@ fi
 echo ""
 
 # Test Gemini
-echo "[3/4] Testing Gemini 2.0 Flash..."
+echo "[3/4] Testing Gemini 2.5 Flash..."
 AUDIO_BASE64=$(base64 < /tmp/ai_test.wav)
 GEMINI_START=$(date +%s%N)
-GEMINI_RESULT=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$GEMINI_API_KEY" \
+GEMINI_RESULT=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$GEMINI_API_KEY" \
   -H "Content-Type: application/json" \
   -d "{
     \"contents\": [{

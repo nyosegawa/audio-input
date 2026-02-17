@@ -10,7 +10,7 @@
 - **UI:** SwiftUI (MenuBarExtra)
 - **ビルド:** Swift Package Manager (Xcode IDE不要)
 - **音声録音:** AVAudioEngine (16kHz WAV)
-- **音声認識:** OpenAI gpt-4o-mini-transcribe (デフォルト) / Gemini 2.0 Flash (選択可)
+- **音声認識:** OpenAI gpt-4o-mini-transcribe (デフォルト) / Gemini 2.5 Flash (選択可)
 - **テキスト整形:** OpenAI gpt-4o-mini (6モード)
 - **テキスト挿入:** NSPasteboard + CGEvent (Cmd+V) + 2秒後クリップボード復元
 - **ホットキー:** Carbon RegisterEventHotKey API
@@ -73,7 +73,7 @@ Sources/AudioInput/
 |--------|---------------------------|------|
 | gpt-4o-mini-transcribe | 0.81s | 完璧 (完全一致) |
 | whisper-1 | 0.77s | 高 |
-| gemini-2.0-flash | 1.57s | 高 (句読点差のみ) |
+| gemini-2.5-flash | 1.40s | 高 (句読点差のみ) |
 | gpt-4o-transcribe | 1.88s | 完璧 |
 
 ## ビルド & 実行

@@ -36,7 +36,7 @@ struct GeminiTranscriber: TranscriptionService {
         let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
 
         let urlString =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\(apiKey)"
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(apiKey)"
         var request = URLRequest(url: URL(string: urlString)!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
