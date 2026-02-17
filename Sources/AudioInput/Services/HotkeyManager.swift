@@ -3,10 +3,11 @@ import Foundation
 
 @MainActor
 final class HotkeyManager {
-    private var hotkeyRef: EventHotKeyRef?
+    private var hotkeyRefs: [EventHotKeyRef] = []
     private var eventHandler: EventHandlerRef?
     private var onKeyDown: (() -> Void)?
     private var onKeyUp: (() -> Void)?
+    private var nextHotkeyID: UInt32 = 1
 
     // Static reference for C callback
     nonisolated(unsafe) private static var shared: HotkeyManager?
@@ -16,20 +17,36 @@ final class HotkeyManager {
         self.onKeyUp = onKeyUp
         HotkeyManager.shared = self
 
-        // Convert to Carbon modifier format
+        installEventHandlerIfNeeded()
+        registerHotkey(keyCode: keyCode, modifiers: modifiers)
+    }
+
+    /// Register an additional hotkey that triggers the same callbacks
+    func registerAdditional(keyCode: UInt32, modifiers: UInt32) {
+        registerHotkey(keyCode: keyCode, modifiers: modifiers)
+    }
+
+    private func registerHotkey(keyCode: UInt32, modifiers: UInt32) {
         var carbonModifiers: UInt32 = 0
         if modifiers & UInt32(optionKey) != 0 { carbonModifiers |= UInt32(optionKey) }
         if modifiers & UInt32(cmdKey) != 0 { carbonModifiers |= UInt32(cmdKey) }
         if modifiers & UInt32(controlKey) != 0 { carbonModifiers |= UInt32(controlKey) }
         if modifiers & UInt32(shiftKey) != 0 { carbonModifiers |= UInt32(shiftKey) }
 
-        let hotkeyID = EventHotKeyID(signature: OSType(0x4149_4E50), id: 1)  // "AINP"
+        let hotkeyID = EventHotKeyID(signature: OSType(0x4149_4E50), id: nextHotkeyID)
+        nextHotkeyID += 1
 
-        // Register for key down
+        var ref: EventHotKeyRef?
         RegisterEventHotKey(
-            keyCode, carbonModifiers, hotkeyID, GetApplicationEventTarget(), 0, &hotkeyRef)
+            keyCode, carbonModifiers, hotkeyID, GetApplicationEventTarget(), 0, &ref)
+        if let ref = ref {
+            hotkeyRefs.append(ref)
+        }
+    }
 
-        // Install event handler for hotkey events
+    private func installEventHandlerIfNeeded() {
+        guard eventHandler == nil else { return }
+
         var eventTypes = [
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased)),
@@ -58,10 +75,10 @@ final class HotkeyManager {
     }
 
     func unregister() {
-        if let ref = hotkeyRef {
+        for ref in hotkeyRefs {
             UnregisterEventHotKey(ref)
-            hotkeyRef = nil
         }
+        hotkeyRefs.removeAll()
         if let handler = eventHandler {
             RemoveEventHandler(handler)
             eventHandler = nil

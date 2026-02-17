@@ -141,6 +141,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         )
+
+        // Secondary hotkey: Ctrl+Shift+Space (guaranteed no conflict)
+        hotkeyManager.registerAdditional(
+            keyCode: KeyCodes.space,
+            modifiers: HotkeyModifiers.control.rawValue | HotkeyModifiers.shift.rawValue
+        )
     }
 
     // MARK: - Recording

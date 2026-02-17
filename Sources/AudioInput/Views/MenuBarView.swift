@@ -213,6 +213,6 @@ struct MenuBarView: View {
         } else {
             parts.append("Key(\(settings.hotkeyCode))")
         }
-        return parts.joined(separator: "+") + " で" + settings.recordingMode.displayName
+        return parts.joined(separator: "+") + " / ⌃+⇧+Space で" + settings.recordingMode.displayName
     }
 }
