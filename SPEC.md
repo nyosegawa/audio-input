@@ -103,7 +103,14 @@ Sources/AudioInput/
 39. 自動モデルダウンロード + 進捗表示 (初回使用時)
 40. ローカルモデルをデフォルトプロバイダに設定 (オフライン・無料・低レイテンシ)
 41. 録音中の16kHzフロートサンプル蓄積 (AudioRecorder拡張)
-42. 1.5秒間隔のストリーミング転写ループ (WhisperKitTranscriber)
+42. 録音中の16kHzフロートサンプル蓄積からのストリーミング転写
+
+### Phase 7 (Eager Modeストリーミング) - Done
+43. Eager Mode実装 (WhisperKit findLongestCommonPrefix/findLongestDifferentSuffixによる単語レベル合意)
+44. 確定テキスト/仮説テキスト分離表示 (確定=通常表示、仮説=グレー表示)
+45. clipTimestamps + prefixTokensによる増分デコード (確定済み音声をスキップ)
+46. 500msポーリング間隔 (旧1.5sから高速化)
+47. wordTimestamps有効化 + chunkingStrategy.none + concurrentWorkerCount=1
 
 ## API検証結果
 

@@ -38,7 +38,8 @@ final class AppState: ObservableObject {
     @Published var status: AppStatus = .idle
     @Published var audioLevel: Float = 0.0
     @Published var recordingStartTime: Date? = nil
-    @Published var streamingText: String = ""
+    @Published var confirmedStreamingText: String = ""
+    @Published var hypothesisStreamingText: String = ""
     @Published var modelDownloadState: ModelDownloadState = .notDownloaded
     @Published var history: [TranscriptionRecord] = []
     @Published var micPermission: PermissionStatus = .notDetermined

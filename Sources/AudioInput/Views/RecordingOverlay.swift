@@ -4,7 +4,8 @@ struct RecordingOverlay: View {
     let audioLevel: Float
     let status: AppStatus
     let recordingStartTime: Date?
-    let streamingText: String
+    let confirmedStreamingText: String
+    let hypothesisStreamingText: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -61,13 +62,13 @@ struct RecordingOverlay: View {
             }
 
             // Streaming transcription text (real-time during recording)
-            if !streamingText.isEmpty && (isRecording || isTranscribing) {
-                Text(streamingText)
+            if (!confirmedStreamingText.isEmpty || !hypothesisStreamingText.isEmpty) && (isRecording || isTranscribing) {
+                (Text(confirmedStreamingText).fontWeight(.medium) +
+                 Text(hypothesisStreamingText).foregroundColor(.secondary))
                     .font(.system(size: 12))
-                    .foregroundColor(.primary.opacity(0.85))
                     .lineLimit(3)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .animation(.easeInOut(duration: 0.15), value: streamingText)
+                    .animation(.easeInOut(duration: 0.15), value: confirmedStreamingText + hypothesisStreamingText)
             }
         }
         .padding(.horizontal, 16)

@@ -116,6 +116,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             modifiers: settings.hotkeyModifiers,
             onKeyDown: { [weak self] in
                 guard let self = self else { return }
+                NSLog("[HOTKEY] keyDown - status: \(self.appState.status), isRecording: \(self.appState.isRecording), mode: \(self.settings.recordingMode)")
                 // Cancel transcription if in progress
                 if self.appState.isTranscribing {
                     self.cancelTranscription()
@@ -134,6 +135,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onKeyUp: { [weak self] in
                 guard let self = self else { return }
+                NSLog("[HOTKEY] keyUp - status: \(self.appState.status), isRecording: \(self.appState.isRecording), mode: \(self.settings.recordingMode)")
                 if self.settings.recordingMode == .pushToTalk && self.appState.isRecording {
                     self.stopRecordingAndTranscribe()
                 }
@@ -147,7 +149,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         transcriptionTask?.cancel()
         transcriptionTask = nil
         whisperTranscriber.stopStreamingTranscription()
-        appState.streamingText = ""
+        appState.confirmedStreamingText = ""
+        appState.hypothesisStreamingText = ""
         if let url = lastRecordingURL {
             recorder.cleanup(url: url)
             lastRecordingURL = nil
@@ -157,6 +160,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startRecording() {
+        NSLog("[RECORD] startRecording called, isRecording: \(appState.isRecording)")
         guard !appState.isRecording else { return }
 
         // Check microphone permission
@@ -181,7 +185,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             _ = try recorder.startRecording(inputDeviceID: deviceID)
             appState.status = .recording
             appState.recordingStartTime = Date()
-            appState.streamingText = ""
+            appState.confirmedStreamingText = ""
+            appState.hypothesisStreamingText = ""
             NSSound.tink?.play()
             showOverlay()
 
@@ -192,8 +197,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 whisperTranscriber.startStreamingTranscription(
                     audioSamplesProvider: { recorderRef.audioSamples },
                     language: language,
-                    onText: { [weak self] text in
-                        self?.appState.streamingText = text
+                    onUpdate: { [weak self] confirmed, hypothesis in
+                        self?.appState.confirmedStreamingText = confirmed
+                        self?.appState.hypothesisStreamingText = hypothesis
                     }
                 )
             }
@@ -204,6 +210,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func stopRecordingAndTranscribe() {
+        NSLog("[RECORD] stopRecordingAndTranscribe called, isRecording: \(appState.isRecording)")
         guard appState.isRecording else { return }
 
         appState.recordingStartTime = nil
@@ -211,7 +218,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         guard let result = recorder.stopRecording() else {
             appState.status = .error("録音データなし")
-            appState.streamingText = ""
+            appState.confirmedStreamingText = ""
+            appState.hypothesisStreamingText = ""
             showOverlayBriefly()
             return
         }
@@ -224,7 +232,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if result.duration < 0.3 {
             recorder.cleanup(url: result.url)
             appState.status = .error("録音が短すぎます")
-            appState.streamingText = ""
+            appState.confirmedStreamingText = ""
+            appState.hypothesisStreamingText = ""
             showOverlayBriefly()
             return
         }
@@ -254,7 +263,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
 
-                appState.streamingText = ""
+                appState.confirmedStreamingText = ""
+                appState.hypothesisStreamingText = ""
 
                 try Task.checkCancellation()
 
@@ -301,7 +311,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     (error as? TranscriptionError)?.errorDescription
                     ?? error.localizedDescription
                 appState.status = .error(errorMsg)
-                appState.streamingText = ""
+                appState.confirmedStreamingText = ""
+                appState.hypothesisStreamingText = ""
                 showOverlayBriefly()
             }
 
@@ -432,7 +443,8 @@ struct OverlayContainer: View {
             audioLevel: appState.audioLevel,
             status: appState.status,
             recordingStartTime: appState.recordingStartTime,
-            streamingText: appState.streamingText
+            confirmedStreamingText: appState.confirmedStreamingText,
+            hypothesisStreamingText: appState.hypothesisStreamingText
         )
     }
 }

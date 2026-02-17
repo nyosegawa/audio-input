@@ -131,12 +131,14 @@ final class WhisperKitTranscriber: ObservableObject {
         return text
     }
 
-    // MARK: - Streaming Transcription (during recording)
+    // MARK: - Eager Mode Streaming Transcription
 
+    /// Starts real-time streaming transcription using WhisperKit's Eager Mode.
+    /// Compares consecutive transcription results to split text into confirmed (stable) and hypothesis (may change).
     func startStreamingTranscription(
         audioSamplesProvider: @escaping @Sendable () -> [Float],
         language: String,
-        onText: @escaping @MainActor @Sendable (String) -> Void
+        onUpdate: @escaping @MainActor @Sendable (_ confirmed: String, _ hypothesis: String) -> Void
     ) {
         stopStreamingTranscription()
 
@@ -144,33 +146,92 @@ final class WhisperKitTranscriber: ObservableObject {
         let lang = language == "auto" ? nil : language
 
         streamingTask = Task.detached {
+            var confirmedWords: [WordTiming] = []
+            var prevResult: TranscriptionResult?
+            var lastAgreedSeconds: Float = 0.0
+            var lastAgreedWords: [WordTiming] = []
+            var prevWords: [WordTiming] = []
+            var hypothesisWords: [WordTiming] = []
+            let tokenConfirmationsNeeded = 2
             var lastSampleCount = 0
 
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(1500))
+                try? await Task.sleep(for: .milliseconds(500))
                 guard !Task.isCancelled else { break }
 
                 let samples = audioSamplesProvider()
-                guard samples.count > lastSampleCount + 8000 else { continue }
+                // Need at least 0.25s of new audio (4000 samples at 16kHz)
+                guard samples.count > lastSampleCount + 4000 else { continue }
                 lastSampleCount = samples.count
 
                 guard let kit = holderRef.kit else { break }
 
                 do {
-                    let options = DecodingOptions(
+                    var options = DecodingOptions(
                         language: lang,
                         temperature: 0.0,
-                        usePrefillPrompt: true
+                        usePrefillPrompt: true,
+                        skipSpecialTokens: true,
+                        wordTimestamps: true,
+                        clipTimestamps: [lastAgreedSeconds],
+                        concurrentWorkerCount: 1,
+                        chunkingStrategy: ChunkingStrategy.none
                     )
+                    let agreedTokens = lastAgreedWords.flatMap { $0.tokens }
+                    if !agreedTokens.isEmpty {
+                        options.prefixTokens = agreedTokens
+                    }
+
                     let results = try await kit.transcribe(
                         audioArray: samples,
                         decodeOptions: options
                     )
                     guard !Task.isCancelled else { break }
-                    let text = results.map(\.text).joined().trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !text.isEmpty {
-                        await onText(text)
+                    guard let result = results.first else { continue }
+
+                    // Fallback: if no word timestamps, show full text as hypothesis
+                    if result.allWords.isEmpty {
+                        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !text.isEmpty {
+                            let confirmed = confirmedWords.map(\.word).joined()
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            await onUpdate(confirmed, text)
+                        }
+                        prevResult = result
+                        continue
                     }
+
+                    // Filter words from agreed point onward
+                    hypothesisWords = result.allWords.filter { $0.start >= lastAgreedSeconds }
+
+                    if let prev = prevResult, !prev.allWords.isEmpty {
+                        prevWords = prev.allWords.filter { $0.start >= lastAgreedSeconds }
+                        let commonPrefix = TranscriptionUtilities.findLongestCommonPrefix(
+                            prevWords, hypothesisWords
+                        )
+
+                        if commonPrefix.count >= tokenConfirmationsNeeded {
+                            // Words agreed upon — advance the confirmed frontier
+                            lastAgreedWords = Array(commonPrefix.suffix(tokenConfirmationsNeeded))
+                            lastAgreedSeconds = lastAgreedWords.first!.start
+                            confirmedWords.append(
+                                contentsOf: commonPrefix.prefix(commonPrefix.count - tokenConfirmationsNeeded)
+                            )
+                        }
+                    }
+
+                    prevResult = result
+
+                    // Build display: confirmed text + hypothesis (anchor words + new suffix)
+                    let confirmed = confirmedWords.map(\.word).joined()
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    let lastHypothesis = lastAgreedWords + TranscriptionUtilities.findLongestDifferentSuffix(
+                        prevWords, hypothesisWords
+                    )
+                    let hypothesis = lastHypothesis.map(\.word).joined()
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                    await onUpdate(confirmed, hypothesis)
                 } catch {
                     continue
                 }
