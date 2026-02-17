@@ -1,11 +1,23 @@
+import AudioToolbox
 import Carbon
 import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
+    @State private var inputDevices: [AudioInputDevice] = []
 
     var body: some View {
         Form {
+            Section("入力デバイス") {
+                Picker("マイク", selection: $settings.selectedInputDeviceID) {
+                    Text("システムデフォルト").tag(nil as AudioDeviceID?)
+                    ForEach(inputDevices) { device in
+                        Text(device.name + (device.isDefault ? " (デフォルト)" : ""))
+                            .tag(device.id as AudioDeviceID?)
+                    }
+                }
+            }
+
             Section("音声認識") {
                 Picker("プロバイダ", selection: $settings.provider) {
                     ForEach(TranscriptionProvider.allCases, id: \.self) { provider in
@@ -26,6 +38,18 @@ struct SettingsView: View {
                         Text(mode.displayName).tag(mode)
                     }
                 }
+
+                if settings.textProcessingMode == .custom {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("カスタムプロンプト")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextEditor(text: $settings.customPrompt)
+                            .font(.system(size: 12, design: .monospaced))
+                            .frame(height: 100)
+                            .border(Color.secondary.opacity(0.3))
+                    }
+                }
             }
 
             Section("APIキー") {
@@ -37,6 +61,19 @@ struct SettingsView: View {
                 Picker("モード", selection: $settings.recordingMode) {
                     ForEach(RecordingMode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode)
+                    }
+                }
+
+                if settings.recordingMode == .toggle {
+                    Toggle("無音検出で自動停止", isOn: $settings.silenceDetectionEnabled)
+
+                    if settings.silenceDetectionEnabled {
+                        Picker("無音時間", selection: $settings.silenceDuration) {
+                            Text("1.5秒").tag(1.5)
+                            Text("2秒").tag(2.0)
+                            Text("3秒").tag(3.0)
+                            Text("5秒").tag(5.0)
+                        }
                     }
                 }
 
@@ -53,7 +90,18 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 450)
+        .frame(width: 420, height: dynamicHeight)
+        .onAppear {
+            inputDevices = AudioRecorder.availableInputDevices()
+        }
+    }
+
+    private var dynamicHeight: CGFloat {
+        var height: CGFloat = 500
+        if settings.textProcessingMode == .custom { height += 120 }
+        if settings.recordingMode == .toggle { height += 30 }
+        if settings.recordingMode == .toggle && settings.silenceDetectionEnabled { height += 30 }
+        return height
     }
 
     private var hotkeyDescription: String {

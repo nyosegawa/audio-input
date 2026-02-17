@@ -28,17 +28,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var overlayWindow: NSWindow?
     private var audioLevelCancellable: AnyCancellable?
+    private var silenceDetectionCancellable: AnyCancellable?
+    private var silenceStartTime: Date?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         registerHotkey()
         observeAudioLevel()
+        observeSilence()
         playStartupSound()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         hotkeyManager.unregister()
         audioLevelCancellable?.cancel()
+        silenceDetectionCancellable?.cancel()
         dismissOverlay()
     }
 
@@ -49,6 +53,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] level in
                 self?.appState.audioLevel = level
+            }
+    }
+
+    // MARK: - Silence Detection
+
+    private func observeSilence() {
+        silenceDetectionCancellable = recorder.$rawRMS
+            .receive(on: RunLoop.main)
+            .sink { [weak self] rms in
+                guard let self = self else { return }
+                guard self.settings.silenceDetectionEnabled,
+                      self.settings.recordingMode == .toggle,
+                      self.appState.isRecording else {
+                    self.silenceStartTime = nil
+                    return
+                }
+
+                if rms < self.settings.silenceThreshold {
+                    if self.silenceStartTime == nil {
+                        self.silenceStartTime = Date()
+                    } else if let start = self.silenceStartTime,
+                              Date().timeIntervalSince(start) >= self.settings.silenceDuration {
+                        self.silenceStartTime = nil
+                        self.stopRecordingAndTranscribe()
+                    }
+                } else {
+                    self.silenceStartTime = nil
+                }
             }
     }
 
@@ -86,8 +118,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard !appState.isRecording else { return }
 
         do {
-            _ = try recorder.startRecording()
+            _ = try recorder.startRecording(inputDeviceID: settings.selectedInputDeviceID)
             appState.status = .recording
+            appState.recordingStartTime = Date()
             NSSound.tink?.play()
             showOverlay()
         } catch {
@@ -98,6 +131,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func stopRecordingAndTranscribe() {
         guard appState.isRecording else { return }
+
+        appState.recordingStartTime = nil
 
         guard let result = recorder.stopRecording() else {
             appState.status = .error("録音データなし")
@@ -110,8 +145,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Skip very short recordings (< 0.3 seconds)
         if result.duration < 0.3 {
             recorder.cleanup(url: result.url)
-            appState.status = .idle
-            dismissOverlay()
+            appState.status = .error("録音が短すぎます")
+            showOverlayBriefly()
             return
         }
 
@@ -121,6 +156,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let language = settings.language
         let provider = settings.provider
         let processingMode = settings.textProcessingMode
+        let customPrompt = settings.customPrompt
         let processorKey = settings.openAIKey
 
         Task { @MainActor in
@@ -132,7 +168,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if processingMode != .none {
                     appState.status = .processing
                     let processor = TextProcessor(apiKey: processorKey)
-                    text = try await processor.process(text: text, mode: processingMode)
+                    text = try await processor.process(text: text, mode: processingMode, customPrompt: customPrompt)
                 }
 
                 let record = TranscriptionRecord(
@@ -145,8 +181,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
                 await textInserter.insert(text: text)
 
-                appState.status = .idle
-                dismissOverlay()
+                appState.status = .success(text)
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2))
+                    if case .success = appState.status {
+                        appState.status = .idle
+                        dismissOverlay()
+                    }
+                }
             } catch {
                 let errorMsg =
                     (error as? TranscriptionError)?.errorDescription
@@ -238,6 +280,10 @@ struct OverlayContainer: View {
     @ObservedObject var appState: AppState
 
     var body: some View {
-        RecordingOverlay(audioLevel: appState.audioLevel, status: appState.status)
+        RecordingOverlay(
+            audioLevel: appState.audioLevel,
+            status: appState.status,
+            recordingStartTime: appState.recordingStartTime
+        )
     }
 }

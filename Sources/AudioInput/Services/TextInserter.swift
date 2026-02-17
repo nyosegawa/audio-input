@@ -9,15 +9,21 @@ final class TextInserter {
         saveClipboard()
         setClipboard(text: text)
 
+        // Capture change count after we set the clipboard
+        let changeCountAfterSet = NSPasteboard.general.changeCount
+
         // Small delay to ensure clipboard is set
         try? await Task.sleep(for: .milliseconds(50))
 
         simulatePaste()
 
-        // Restore clipboard after delay
+        // Restore clipboard after delay, only if no external app modified it
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(2))
-            self?.restoreClipboard()
+            if NSPasteboard.general.changeCount == changeCountAfterSet {
+                self?.restoreClipboard()
+            }
+            self?.previousClipboard = [:]
         }
     }
 

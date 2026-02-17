@@ -1,3 +1,4 @@
+import AudioToolbox
 import Foundation
 
 enum TranscriptionProvider: String, CaseIterable, Sendable {
@@ -52,6 +53,27 @@ final class AppSettings: ObservableObject {
     @Published var textProcessingMode: TextProcessingMode {
         didSet { UserDefaults.standard.set(textProcessingMode.rawValue, forKey: "textProcessingMode") }
     }
+    @Published var customPrompt: String {
+        didSet { UserDefaults.standard.set(customPrompt, forKey: "customPrompt") }
+    }
+    @Published var selectedInputDeviceID: AudioDeviceID? {
+        didSet {
+            if let id = selectedInputDeviceID {
+                UserDefaults.standard.set(Int(id), forKey: "selectedInputDeviceID")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "selectedInputDeviceID")
+            }
+        }
+    }
+    @Published var silenceDetectionEnabled: Bool {
+        didSet { UserDefaults.standard.set(silenceDetectionEnabled, forKey: "silenceDetectionEnabled") }
+    }
+    @Published var silenceDuration: Double {
+        didSet { UserDefaults.standard.set(silenceDuration, forKey: "silenceDuration") }
+    }
+    @Published var silenceThreshold: Float {
+        didSet { UserDefaults.standard.set(silenceThreshold, forKey: "silenceThreshold") }
+    }
     @Published var launchAtLogin: Bool {
         didSet { UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin") }
     }
@@ -65,6 +87,14 @@ final class AppSettings: ObservableObject {
         self.hotkeyCode = UInt32(UserDefaults.standard.integer(forKey: "hotkeyCode"))
         self.hotkeyModifiers = UInt32(UserDefaults.standard.integer(forKey: "hotkeyModifiers"))
         self.textProcessingMode = TextProcessingMode(rawValue: UserDefaults.standard.string(forKey: "textProcessingMode") ?? "") ?? .none
+        self.customPrompt = UserDefaults.standard.string(forKey: "customPrompt") ?? ""
+        let storedDeviceID = UserDefaults.standard.integer(forKey: "selectedInputDeviceID")
+        self.selectedInputDeviceID = storedDeviceID > 0 ? AudioDeviceID(storedDeviceID) : nil
+        self.silenceDetectionEnabled = UserDefaults.standard.bool(forKey: "silenceDetectionEnabled")
+        let storedSilenceDuration = UserDefaults.standard.double(forKey: "silenceDuration")
+        self.silenceDuration = storedSilenceDuration > 0 ? storedSilenceDuration : 2.0
+        let storedSilenceThreshold = UserDefaults.standard.float(forKey: "silenceThreshold")
+        self.silenceThreshold = storedSilenceThreshold > 0 ? storedSilenceThreshold : 0.01
         self.launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
 
         // Default hotkey: Option+Space

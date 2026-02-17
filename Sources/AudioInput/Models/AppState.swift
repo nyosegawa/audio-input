@@ -6,6 +6,7 @@ enum AppStatus: Sendable {
     case recording
     case transcribing
     case processing
+    case success(String)
     case error(String)
 }
 
@@ -21,6 +22,7 @@ struct TranscriptionRecord: Identifiable, Sendable {
 final class AppState: ObservableObject {
     @Published var status: AppStatus = .idle
     @Published var audioLevel: Float = 0.0
+    @Published var recordingStartTime: Date? = nil
     @Published var history: [TranscriptionRecord] = []
 
     var isRecording: Bool {
@@ -44,6 +46,7 @@ final class AppState: ObservableObject {
         case .recording: "録音中..."
         case .transcribing: "文字起こし中..."
         case .processing: "テキスト整形中..."
+        case .success: "完了"
         case .error(let msg): "エラー: \(msg)"
         }
     }

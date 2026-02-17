@@ -112,6 +112,7 @@ struct MenuBarView: View {
         case .idle: .green
         case .recording: .red
         case .transcribing, .processing: .orange
+        case .success: .green
         case .error: .red
         }
     }

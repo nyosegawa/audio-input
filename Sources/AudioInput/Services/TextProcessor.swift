@@ -7,6 +7,7 @@ enum TextProcessingMode: String, CaseIterable, Sendable {
     case casual = "casual"
     case email = "email"
     case code = "code"
+    case custom = "custom"
 
     var displayName: String {
         switch self {
@@ -16,6 +17,7 @@ enum TextProcessingMode: String, CaseIterable, Sendable {
         case .casual: "カジュアル"
         case .email: "メール文"
         case .code: "コードコメント"
+        case .custom: "カスタム"
         }
     }
 
@@ -63,6 +65,7 @@ enum TextProcessingMode: String, CaseIterable, Sendable {
             - 技術用語は英語のまま
             整形後のテキストのみを返してください。
             """
+        case .custom: nil
         }
     }
 }
@@ -70,8 +73,15 @@ enum TextProcessingMode: String, CaseIterable, Sendable {
 struct TextProcessor: Sendable {
     let apiKey: String
 
-    func process(text: String, mode: TextProcessingMode) async throws -> String {
-        guard let systemPrompt = mode.systemPrompt else { return text }
+    func process(text: String, mode: TextProcessingMode, customPrompt: String? = nil) async throws -> String {
+        let systemPrompt: String
+        if mode == .custom {
+            guard let custom = customPrompt, !custom.isEmpty else { return text }
+            systemPrompt = custom
+        } else {
+            guard let prompt = mode.systemPrompt else { return text }
+            systemPrompt = prompt
+        }
         guard !apiKey.isEmpty else { return text }
 
         let requestBody: [String: Any] = [

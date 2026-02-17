@@ -3,6 +3,7 @@ import SwiftUI
 struct RecordingOverlay: View {
     let audioLevel: Float
     let status: AppStatus
+    let recordingStartTime: Date?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -24,10 +25,31 @@ struct RecordingOverlay: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.primary)
 
+            // Elapsed time
+            if isRecording, let start = recordingStartTime {
+                TimelineView(.periodic(from: start, by: 1)) { context in
+                    let elapsed = max(0, Int(context.date.timeIntervalSince(start)))
+                    let minutes = elapsed / 60
+                    let seconds = elapsed % 60
+                    Text(String(format: "%d:%02d", minutes, seconds))
+                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+
             // Audio level bars
             if isRecording {
                 AudioLevelBars(level: audioLevel)
                     .frame(width: 40, height: 20)
+            }
+
+            // Success text preview
+            if case .success(let text) = status {
+                Text(text.count > 80 ? String(text.prefix(80)) + "..." : text)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: 180, alignment: .leading)
             }
 
             if isTranscribing {
@@ -59,6 +81,7 @@ struct RecordingOverlay: View {
         case .recording: .red
         case .transcribing: .orange
         case .processing: .blue
+        case .success: .green
         case .error: .red
         case .idle: .secondary
         }
@@ -69,6 +92,7 @@ struct RecordingOverlay: View {
         case .recording: "mic.fill"
         case .transcribing: "waveform"
         case .processing: "text.badge.checkmark"
+        case .success: "checkmark.circle.fill"
         default: "mic"
         }
     }
@@ -78,6 +102,7 @@ struct RecordingOverlay: View {
         case .recording: "録音中"
         case .transcribing: "文字起こし中..."
         case .processing: "テキスト整形中..."
+        case .success: "完了"
         case .error(let msg): msg
         case .idle: ""
         }

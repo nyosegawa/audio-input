@@ -11,8 +11,9 @@
 - **ビルド:** Swift Package Manager (Xcode IDE不要)
 - **音声録音:** AVAudioEngine (16kHz WAV)
 - **音声認識:** OpenAI gpt-4o-mini-transcribe (デフォルト) / Gemini 2.5 Flash (選択可)
-- **テキスト整形:** OpenAI gpt-4o-mini (6モード)
-- **テキスト挿入:** NSPasteboard + CGEvent (Cmd+V) + 2秒後クリップボード復元
+- **デバイス選択:** CoreAudio API (AudioObjectGetPropertyData / AudioUnitSetProperty)
+- **テキスト整形:** OpenAI gpt-4o-mini (6プリセット + カスタムプロンプト)
+- **テキスト挿入:** NSPasteboard + CGEvent (Cmd+V) + changeCount検知スマート復元
 - **ホットキー:** Carbon RegisterEventHotKey API
 - **最小OS:** macOS 14 (Sonoma)
 
@@ -50,22 +51,31 @@ Sources/AudioInput/
 3. プッシュトゥトーク (ホットキー押下中に録音)
 4. 録音中の視覚フィードバック (フローティングオーバーレイ + 音声レベルバー)
 5. OpenAI gpt-4o-mini-transcribe での文字起こし
-6. クリップボード経由テキスト挿入 + 2秒後クリップボード復元
+6. クリップボード経由テキスト挿入 + スマートクリップボード復元 (changeCount検知)
 7. 基本設定 (APIキー, ホットキー, 言語)
 8. 録音開始/停止のサウンドフィードバック
 
 ### Phase 2 - Done
 9. トグルモード (1回押し開始、もう1回押し停止)
-10. Gemini 2.0 Flash 対応
+10. Gemini 2.5 Flash 対応
 11. 転写履歴 (最新50件保持、コピー可能)
 12. AI整形モード 6種 (そのまま/整形/丁寧語/カジュアル/メール/コード)
 13. メニューバーからクイックモード切替
 14. ログイン時自動起動設定
 
-### Phase 3 - Future
-15. オーディオ入力デバイス選択
-16. WhisperKit統合 (ローカルモデル)
-17. カスタムプロンプト入力
+### Phase 3 - Done
+15. オーディオ入力デバイス選択 (CoreAudio API)
+16. カスタムテキスト処理プロンプト (ユーザー定義のシステムプロンプト)
+17. 短い録音のフィードバック表示 (0.3秒未満の録音時にオーバーレイ通知)
+18. スマートクリップボード復元 (changeCount検知で外部コピーを保護)
+
+### Phase 4 - Done
+19. 成功フィードバック (転写テキストを2秒間オーバーレイ表示)
+20. 録音経過時間表示 (オーバーレイにタイマー表示、TimelineView)
+21. 無音検出による自動停止 (トグルモード時、設定可能な無音時間で自動停止)
+
+### Phase 5 - Future
+22. WhisperKit統合 (ローカルモデル)
 
 ## API検証結果
 

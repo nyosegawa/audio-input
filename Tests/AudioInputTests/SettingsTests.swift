@@ -6,7 +6,7 @@ import XCTest
 final class SettingsTests: XCTestCase {
     func testTranscriptionProviderDisplayName() {
         XCTAssertEqual(TranscriptionProvider.openAI.displayName, "OpenAI (gpt-4o-mini-transcribe)")
-        XCTAssertEqual(TranscriptionProvider.gemini.displayName, "Gemini 2.0 Flash")
+        XCTAssertEqual(TranscriptionProvider.gemini.displayName, "Gemini 2.5 Flash")
     }
 
     func testRecordingModeDisplayName() {
