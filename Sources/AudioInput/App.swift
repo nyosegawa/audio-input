@@ -137,6 +137,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self = self else { return }
                 NSLog("[HOTKEY] keyUp - status: \(self.appState.status), isRecording: \(self.appState.isRecording), mode: \(self.settings.recordingMode)")
                 if self.settings.recordingMode == .pushToTalk && self.appState.isRecording {
+                    // Debounce: if keyUp fires within 0.5s of recording start,
+                    // ignore it (likely spurious from system key handling).
+                    // User can press again to stop (toggle fallback).
+                    if let start = self.appState.recordingStartTime,
+                       Date().timeIntervalSince(start) < 0.5 {
+                        NSLog("[HOTKEY] keyUp ignored - only %.2fs since recording start, press again to stop", Date().timeIntervalSince(start))
+                        return
+                    }
                     self.stopRecordingAndTranscribe()
                 }
             }
