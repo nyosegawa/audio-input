@@ -20,6 +20,14 @@ struct SettingsView: View {
                 }
             }
 
+            Section("テキスト処理") {
+                Picker("整形モード", selection: $settings.textProcessingMode) {
+                    ForEach(TextProcessingMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+            }
+
             Section("APIキー") {
                 SecureField("OpenAI API Key", text: $settings.openAIKey)
                 SecureField("Gemini API Key", text: $settings.geminiKey)
@@ -39,9 +47,13 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                 }
             }
+
+            Section("一般") {
+                Toggle("ログイン時に起動", isOn: $settings.launchAtLogin)
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 400, height: 350)
+        .frame(width: 420, height: 450)
     }
 
     private var hotkeyDescription: String {

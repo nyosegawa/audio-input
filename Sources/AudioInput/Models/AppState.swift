@@ -5,6 +5,7 @@ enum AppStatus: Sendable {
     case idle
     case recording
     case transcribing
+    case processing
     case error(String)
 }
 
@@ -21,7 +22,6 @@ final class AppState: ObservableObject {
     @Published var status: AppStatus = .idle
     @Published var audioLevel: Float = 0.0
     @Published var history: [TranscriptionRecord] = []
-    @Published var lastError: String?
 
     var isRecording: Bool {
         if case .recording = status { return true }
@@ -30,7 +30,12 @@ final class AppState: ObservableObject {
 
     var isTranscribing: Bool {
         if case .transcribing = status { return true }
+        if case .processing = status { return true }
         return false
+    }
+
+    var isBusy: Bool {
+        isRecording || isTranscribing
     }
 
     var statusText: String {
@@ -38,6 +43,7 @@ final class AppState: ObservableObject {
         case .idle: "待機中"
         case .recording: "録音中..."
         case .transcribing: "文字起こし中..."
+        case .processing: "テキスト整形中..."
         case .error(let msg): "エラー: \(msg)"
         }
     }

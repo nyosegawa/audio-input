@@ -24,11 +24,10 @@ final class HotkeyManager {
         if modifiers & UInt32(shiftKey) != 0 { carbonModifiers |= UInt32(shiftKey) }
 
         let hotkeyID = EventHotKeyID(signature: OSType(0x4149_4E50), id: 1)  // "AINP"
-        var hotKeyIDVar = hotkeyID
 
         // Register for key down
         RegisterEventHotKey(
-            keyCode, carbonModifiers, hotKeyIDVar, GetApplicationEventTarget(), 0, &hotkeyRef)
+            keyCode, carbonModifiers, hotkeyID, GetApplicationEventTarget(), 0, &hotkeyRef)
 
         // Install event handler for hotkey events
         var eventTypes = [

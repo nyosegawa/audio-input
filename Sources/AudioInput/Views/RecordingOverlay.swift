@@ -48,14 +48,17 @@ struct RecordingOverlay: View {
     }
 
     private var isTranscribing: Bool {
-        if case .transcribing = status { return true }
-        return false
+        switch status {
+        case .transcribing, .processing: return true
+        default: return false
+        }
     }
 
     private var micColor: Color {
         switch status {
         case .recording: .red
         case .transcribing: .orange
+        case .processing: .blue
         case .error: .red
         case .idle: .secondary
         }
@@ -65,6 +68,7 @@ struct RecordingOverlay: View {
         switch status {
         case .recording: "mic.fill"
         case .transcribing: "waveform"
+        case .processing: "text.badge.checkmark"
         default: "mic"
         }
     }
@@ -73,6 +77,7 @@ struct RecordingOverlay: View {
         switch status {
         case .recording: "録音中"
         case .transcribing: "文字起こし中..."
+        case .processing: "テキスト整形中..."
         case .error(let msg): msg
         case .idle: ""
         }

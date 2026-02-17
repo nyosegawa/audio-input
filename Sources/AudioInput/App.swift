@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @main
@@ -26,21 +27,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let hotkeyManager = HotkeyManager()
 
     private var overlayWindow: NSWindow?
-    private var recordingURL: URL?
+    private var audioLevelCancellable: AnyCancellable?
 
-    @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         registerHotkey()
+        observeAudioLevel()
+        playStartupSound()
     }
 
-    @MainActor
     func applicationWillTerminate(_ notification: Notification) {
         hotkeyManager.unregister()
+        audioLevelCancellable?.cancel()
         dismissOverlay()
     }
 
-    @MainActor
+    // MARK: - Audio Level Observation
+
+    private func observeAudioLevel() {
+        audioLevelCancellable = recorder.$audioLevel
+            .receive(on: RunLoop.main)
+            .sink { [weak self] level in
+                self?.appState.audioLevel = level
+            }
+    }
+
+    // MARK: - Hotkey
+
     private func registerHotkey() {
         hotkeyManager.register(
             keyCode: settings.hotkeyCode,
@@ -67,14 +80,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    @MainActor
+    // MARK: - Recording
+
     private func startRecording() {
         guard !appState.isRecording else { return }
 
         do {
-            let url = try recorder.startRecording()
-            recordingURL = url
+            _ = try recorder.startRecording()
             appState.status = .recording
+            NSSound.tink?.play()
             showOverlay()
         } catch {
             appState.status = .error("録音開始失敗: \(error.localizedDescription)")
@@ -82,7 +96,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @MainActor
     private func stopRecordingAndTranscribe() {
         guard appState.isRecording else { return }
 
@@ -91,6 +104,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             showOverlayBriefly()
             return
         }
+
+        NSSound.pop?.play()
 
         // Skip very short recordings (< 0.3 seconds)
         if result.duration < 0.3 {
@@ -101,16 +116,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         appState.status = .transcribing
-        showOverlay()
 
         let transcriber = createTranscriber()
         let language = settings.language
         let provider = settings.provider
+        let processingMode = settings.textProcessingMode
+        let processorKey = settings.openAIKey
 
         Task { @MainActor in
             do {
-                let text = try await transcriber.transcribe(
+                var text = try await transcriber.transcribe(
                     audioURL: result.url, language: language)
+
+                // Apply text processing if enabled
+                if processingMode != .none {
+                    appState.status = .processing
+                    let processor = TextProcessor(apiKey: processorKey)
+                    text = try await processor.process(text: text, mode: processingMode)
+                }
 
                 let record = TranscriptionRecord(
                     text: text,
@@ -136,7 +159,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @MainActor
     private func createTranscriber() -> TranscriptionService {
         switch settings.provider {
         case .openAI:
@@ -146,16 +168,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Sound
+
+    private func playStartupSound() {
+        NSSound(named: "Glass")?.play()
+    }
+
     // MARK: - Overlay Window
 
-    @MainActor
     private func showOverlay() {
         if overlayWindow == nil {
             let hostingView = NSHostingView(
                 rootView: OverlayContainer(appState: appState))
 
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 260, height: 50),
+                contentRect: NSRect(x: 0, y: 0, width: 280, height: 52),
                 styleMask: [.borderless],
                 backing: .buffered,
                 defer: false
@@ -171,7 +198,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Position at top center of main screen
             if let screen = NSScreen.main {
                 let screenFrame = screen.visibleFrame
-                let x = screenFrame.midX - 130
+                let x = screenFrame.midX - 140
                 let y = screenFrame.maxY - 70
                 window.setFrameOrigin(NSPoint(x: x, y: y))
             }
@@ -182,7 +209,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         overlayWindow?.orderFront(nil)
     }
 
-    @MainActor
     private func showOverlayBriefly() {
         showOverlay()
         Task { @MainActor in
@@ -194,11 +220,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @MainActor
     private func dismissOverlay() {
         overlayWindow?.orderOut(nil)
     }
 }
+
+// MARK: - NSSound extension
+
+extension NSSound {
+    static let tink = NSSound(named: "Tink")
+    static let pop = NSSound(named: "Pop")
+}
+
+// MARK: - Overlay Container
 
 struct OverlayContainer: View {
     @ObservedObject var appState: AppState

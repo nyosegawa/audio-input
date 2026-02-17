@@ -49,6 +49,12 @@ final class AppSettings: ObservableObject {
     @Published var hotkeyModifiers: UInt32 {
         didSet { UserDefaults.standard.set(hotkeyModifiers, forKey: "hotkeyModifiers") }
     }
+    @Published var textProcessingMode: TextProcessingMode {
+        didSet { UserDefaults.standard.set(textProcessingMode.rawValue, forKey: "textProcessingMode") }
+    }
+    @Published var launchAtLogin: Bool {
+        didSet { UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin") }
+    }
 
     private init() {
         self.openAIKey = UserDefaults.standard.string(forKey: "openAIKey") ?? ""
@@ -58,6 +64,8 @@ final class AppSettings: ObservableObject {
         self.recordingMode = RecordingMode(rawValue: UserDefaults.standard.string(forKey: "recordingMode") ?? "") ?? .pushToTalk
         self.hotkeyCode = UInt32(UserDefaults.standard.integer(forKey: "hotkeyCode"))
         self.hotkeyModifiers = UInt32(UserDefaults.standard.integer(forKey: "hotkeyModifiers"))
+        self.textProcessingMode = TextProcessingMode(rawValue: UserDefaults.standard.string(forKey: "textProcessingMode") ?? "") ?? .none
+        self.launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
 
         // Default hotkey: Option+Space
         if hotkeyCode == 0 && hotkeyModifiers == 0 {
@@ -71,6 +79,7 @@ final class AppSettings: ObservableObject {
     private func loadFromEnvFile() {
         let envPaths = [
             FileManager.default.currentDirectoryPath + "/.env",
+            Bundle.main.bundlePath + "/Contents/MacOS/.env",
             Bundle.main.bundlePath + "/.env",
         ]
         for path in envPaths {

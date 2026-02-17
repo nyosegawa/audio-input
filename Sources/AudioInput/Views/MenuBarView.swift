@@ -31,7 +31,18 @@ struct MenuBarView: View {
                     .foregroundColor(.secondary)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.vertical, 4)
+
+            // Processing mode
+            HStack {
+                Image(systemName: "text.badge.checkmark")
+                    .font(.system(size: 11))
+                Text(settings.textProcessingMode.displayName)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
 
             // Hotkey info
             HStack {
@@ -42,12 +53,29 @@ struct MenuBarView: View {
                     .foregroundColor(.secondary)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.vertical, 4)
 
             Divider()
 
-            // Actions
-            Button("履歴を表示") {
+            // Quick mode toggle
+            Menu("整形モード") {
+                ForEach(TextProcessingMode.allCases, id: \.self) { mode in
+                    Button {
+                        settings.textProcessingMode = mode
+                    } label: {
+                        HStack {
+                            Text(mode.displayName)
+                            if settings.textProcessingMode == mode {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+
+            Button("履歴 (\(appState.history.count))") {
                 showHistory.toggle()
             }
             .keyboardShortcut("h")
@@ -70,7 +98,7 @@ struct MenuBarView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
         }
-        .frame(width: 260)
+        .frame(width: 280)
         .sheet(isPresented: $showSettings) {
             SettingsView(settings: settings)
         }
@@ -83,7 +111,7 @@ struct MenuBarView: View {
         switch appState.status {
         case .idle: .green
         case .recording: .red
-        case .transcribing: .orange
+        case .transcribing, .processing: .orange
         case .error: .red
         }
     }
