@@ -5,7 +5,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var appState: AppState
-    @ObservedObject var whisperTranscriber: WhisperKitTranscriber
+    @ObservedObject var whisperTranscriber: WhisperTranscriber
     @State private var inputDevices: [AudioInputDevice] = []
 
     var body: some View {

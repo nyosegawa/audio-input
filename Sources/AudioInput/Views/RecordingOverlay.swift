@@ -65,10 +65,10 @@ struct RecordingOverlay: View {
             if (!confirmedStreamingText.isEmpty || !hypothesisStreamingText.isEmpty) && (isRecording || isTranscribing) {
                 (Text(confirmedStreamingText).fontWeight(.medium) +
                  Text(hypothesisStreamingText).foregroundColor(.secondary))
-                    .font(.system(size: 12))
-                    .lineLimit(3)
+                    .font(.system(size: 13))
+                    .lineLimit(6)
+                    .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .animation(.easeInOut(duration: 0.15), value: confirmedStreamingText + hypothesisStreamingText)
             }
         }
         .padding(.horizontal, 16)

@@ -25,7 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let recorder = AudioRecorder()
     let textInserter = TextInserter()
     let hotkeyManager = HotkeyManager()
-    let whisperTranscriber = WhisperKitTranscriber()
+    let whisperTranscriber = WhisperTranscriber()
 
     private var overlayWindow: NSWindow?
     private var audioLevelCancellable: AnyCancellable?
@@ -42,7 +42,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         observeAudioLevel()
         observeSilence()
         loadWhisperModelIfNeeded()
+        loadStreamingModelIfNeeded()
         playStartupSound()
+        NSLog("[APP] Launch complete - provider: \(settings.provider.rawValue), accessibility: \(AXIsProcessTrusted()), modelLoaded: \(whisperTranscriber.isModelLoaded)")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -66,7 +68,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if case .denied = appState.accessibilityPermission {
-            PermissionChecker.requestAccessibilityAccess()
+            // Only prompt once; don't auto-prompt on every launch
+            // since rebuilds change code signature and trigger repeated dialogs
+            if !UserDefaults.standard.bool(forKey: "hasPromptedAccessibility") {
+                UserDefaults.standard.set(true, forKey: "hasPromptedAccessibility")
+                PermissionChecker.requestAccessibilityAccess()
+            }
         }
     }
 
@@ -205,13 +212,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             showOverlay()
 
             // Start streaming transcription for local model
-            if settings.provider.isLocal && whisperTranscriber.isModelLoaded {
+            let canStream = settings.provider.isLocal && whisperTranscriber.isModelLoaded
+            NSLog("[RECORD] Streaming check - provider.isLocal: \(settings.provider.isLocal), modelLoaded: \(whisperTranscriber.isModelLoaded)")
+            if canStream {
+                NSLog("[STREAM] Starting streaming transcription")
                 let language = settings.language
                 let recorderRef = recorder
                 whisperTranscriber.startStreamingTranscription(
                     audioSamplesProvider: { recorderRef.audioSamples },
                     language: language,
                     onUpdate: { [weak self] confirmed, hypothesis in
+                        NSLog("[STREAM] onUpdate - confirmed: '%@', hypothesis: '%@'", confirmed, hypothesis)
                         self?.appState.confirmedStreamingText = confirmed
                         self?.appState.hypothesisStreamingText = hypothesis
                     }
@@ -308,7 +319,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 appState.addRecord(record)
 
+                NSLog("[TRANSCRIBE] Result text (%d chars): %@", text.count, String(text.prefix(100)))
+                NSLog("[TRANSCRIBE] Accessibility: \(AXIsProcessTrusted())")
                 await textInserter.insert(text: text)
+                NSLog("[TRANSCRIBE] Text insertion done")
 
                 appState.status = .success(text)
                 Task { @MainActor in
@@ -349,11 +363,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - WhisperKit
+    // MARK: - whisper.cpp
 
     func loadWhisperModelIfNeeded() {
-        guard settings.provider == .local else { return }
+        guard settings.provider == .local else {
+            NSLog("[WHISPER] Skipping model load - provider is %@", settings.provider.rawValue)
+            return
+        }
         let model = settings.whisperModel
+        NSLog("[WHISPER] Starting model load: %@", model.rawValue)
 
         Task { @MainActor in
             do {
@@ -361,10 +379,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.appState.modelDownloadState = .downloading(progress)
                 }
                 self.appState.modelDownloadState = .downloaded
+                NSLog("[WHISPER] Model loaded successfully, isModelLoaded: \(self.whisperTranscriber.isModelLoaded)")
             } catch {
                 self.appState.modelDownloadState = .error(error.localizedDescription)
+                NSLog("[WHISPER] Model load failed: %@", error.localizedDescription)
             }
         }
+    }
+
+    func loadStreamingModelIfNeeded() {
+        // No-op: whisper.cpp uses a single model for both streaming and final transcription
     }
 
     // MARK: - Sound
@@ -375,18 +399,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Overlay Window
 
+    static let overlayWidth: CGFloat = 420
+    private static let overlayMaxHeight: CGFloat = 200
+
     private func showOverlay() {
         if overlayWindow == nil {
-            let hostingView = NSHostingView(
-                rootView: OverlayContainer(appState: appState))
+            let initialFrame = NSRect(x: 0, y: 0, width: Self.overlayWidth, height: Self.overlayMaxHeight)
+            let container = ConstraintFreeContainer(frame: initialFrame)
+            container.translatesAutoresizingMaskIntoConstraints = true
 
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 380, height: 80),
+            let hostingView = NSHostingView(rootView: OverlayContainer(appState: appState))
+            hostingView.translatesAutoresizingMaskIntoConstraints = true
+            hostingView.frame = container.bounds
+            hostingView.autoresizingMask = [.width, .height]
+            container.addSubview(hostingView)
+
+            let window = ConstraintFreeWindow(
+                contentRect: initialFrame,
                 styleMask: [.borderless],
                 backing: .buffered,
                 defer: false
             )
-            window.contentView = hostingView
+            window.contentView = container
             window.isOpaque = false
             window.backgroundColor = .clear
             window.level = .floating
@@ -394,30 +428,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.isReleasedWhenClosed = false
             window.ignoresMouseEvents = true
 
-            // Position at top center of the screen containing the mouse pointer
-            let mouseScreen = NSScreen.screens.first(where: {
-                NSMouseInRect(NSEvent.mouseLocation, $0.frame, false)
-            }) ?? NSScreen.main
-            if let screen = mouseScreen {
-                let screenFrame = screen.visibleFrame
-                let x = screenFrame.midX - 190
-                let y = screenFrame.maxY - 70
-                window.setFrameOrigin(NSPoint(x: x, y: y))
-            }
-
             overlayWindow = window
         }
 
-        // Update position to current active screen each time
+        // Position at top center of the screen containing the mouse pointer
         if let window = overlayWindow {
             let mouseScreen = NSScreen.screens.first(where: {
                 NSMouseInRect(NSEvent.mouseLocation, $0.frame, false)
             }) ?? NSScreen.main
             if let screen = mouseScreen {
                 let screenFrame = screen.visibleFrame
-                let x = screenFrame.midX - 190
-                let y = screenFrame.maxY - 70
-                window.setFrameOrigin(NSPoint(x: x, y: y))
+                let x = screenFrame.midX - Self.overlayWidth / 2
+                let y = screenFrame.maxY - Self.overlayMaxHeight - 10
+                window.setFrame(
+                    NSRect(x: x, y: y, width: Self.overlayWidth, height: Self.overlayMaxHeight),
+                    display: true
+                )
             }
         }
 
@@ -447,6 +473,40 @@ extension NSSound {
     static let pop = NSSound(named: "Pop")
 }
 
+// MARK: - Constraint-Free Window & Container
+//
+// On macOS 26, NSHostingView's internal child views trigger constraint
+// re-invalidation during the display cycle commit phase, causing
+// _updateConstraintsForSubtreeIfNeededCollectingViewsWithInvalidBaselines:
+// to throw an exception (SIGABRT).
+//
+// NSWindow.updateConstraintsIfNeeded() initiates the constraint tree walk
+// that reaches into NSHostingView's internal views via private _-prefixed
+// methods. Overriding the view-level updateConstraintsForSubtreeIfNeeded
+// alone is insufficient because AppKit bypasses it for child views.
+//
+// The fix: block at the WINDOW level so the walk never starts.
+// SwiftUI rendering is unaffected — it uses its own CADisplayLink-driven
+// view graph update mechanism, not Auto Layout constraints.
+//
+// All overrides are nonisolated to prevent Swift 6 from generating
+// @objc thunks with MainActor isolation checks. AppKit calls these from
+// the display cycle which runs on the main thread but lacks a Swift Task
+// context, causing swift_task_isMainExecutorImpl to crash.
+
+final class ConstraintFreeWindow: NSWindow {
+    nonisolated override func updateConstraintsIfNeeded() { }
+}
+
+final class ConstraintFreeContainer: NSView {
+    nonisolated override var needsUpdateConstraints: Bool {
+        get { false }
+        set { }
+    }
+    nonisolated override func updateConstraints() { }
+    nonisolated override func updateConstraintsForSubtreeIfNeeded() { }
+}
+
 // MARK: - Overlay Container
 
 struct OverlayContainer: View {
@@ -460,5 +520,6 @@ struct OverlayContainer: View {
             confirmedStreamingText: appState.confirmedStreamingText,
             hypothesisStreamingText: appState.hypothesisStreamingText
         )
+        .frame(width: AppDelegate.overlayWidth, alignment: .topLeading)
     }
 }

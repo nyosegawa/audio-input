@@ -21,14 +21,121 @@ enum RecordingError: Error, LocalizedError {
     }
 }
 
+/// Holds all state accessed from the audio tap callback thread.
+/// @unchecked Sendable because all mutable state is protected by NSLock or single-writer.
+/// This prevents Swift 6 from inserting MainActor isolation checks in the tap closure.
+private final class AudioTapState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _samples: [Float] = []
+    private var _audioLevel: Float = 0
+    private var _rawRMS: Float = 0
+
+    // Audio processing state (set once before tap starts, read from tap callback)
+    var audioFile: AVAudioFile?
+    var converter: AVAudioConverter?
+    var outputFormat: AVAudioFormat?
+    var sampleRateRatio: Double = 1.0
+
+    var samples: [Float] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _samples
+    }
+
+    var audioLevel: Float {
+        get { lock.lock(); defer { lock.unlock() }; return _audioLevel }
+        set { lock.lock(); _audioLevel = newValue; lock.unlock() }
+    }
+
+    var rawRMS: Float {
+        get { lock.lock(); defer { lock.unlock() }; return _rawRMS }
+        set { lock.lock(); _rawRMS = newValue; lock.unlock() }
+    }
+
+    func appendSamples(_ newSamples: [Float]) {
+        lock.lock()
+        _samples.append(contentsOf: newSamples)
+        lock.unlock()
+    }
+
+    func clearSamples() {
+        lock.lock()
+        _samples.removeAll()
+        lock.unlock()
+    }
+
+    func reset() {
+        audioFile = nil
+        converter = nil
+        outputFormat = nil
+        sampleRateRatio = 1.0
+        clearSamples()
+        audioLevel = 0
+        rawRMS = 0
+    }
+}
+
+/// Install audio tap in a nonisolated context so the closure does NOT inherit
+/// @MainActor isolation. This prevents Swift 6 runtime isolation checks on the
+/// audio callback thread (RealtimeMessenger.mServiceQueue).
+private func installAudioTap(
+    on inputNode: AVAudioInputNode,
+    format: AVAudioFormat,
+    tapState: AudioTapState
+) {
+    inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+        guard let channelData = buffer.floatChannelData?[0] else { return }
+        let frameLength = Int(buffer.frameLength)
+        var sum: Float = 0
+        for i in 0..<frameLength {
+            sum += channelData[i] * channelData[i]
+        }
+        let rms = sqrt(sum / Float(frameLength))
+        tapState.audioLevel = max(0, min(1, rms * 5))
+        tapState.rawRMS = rms
+
+        guard let outFmt = tapState.outputFormat,
+              let conv = tapState.converter
+        else { return }
+        let outputFrameCapacity = AVAudioFrameCount(
+            ceil(Double(buffer.frameLength) * tapState.sampleRateRatio))
+        guard
+            let outputBuffer = AVAudioPCMBuffer(
+                pcmFormat: outFmt, frameCapacity: outputFrameCapacity)
+        else { return }
+
+        var error: NSError?
+        let inputBuffer = buffer
+        nonisolated(unsafe) var gotData = false
+        conv.convert(to: outputBuffer, error: &error) { _, status in
+            if gotData {
+                status.pointee = .noDataNow
+                return nil
+            }
+            gotData = true
+            status.pointee = .haveData
+            return inputBuffer
+        }
+
+        if error == nil, outputBuffer.frameLength > 0 {
+            try? tapState.audioFile?.write(from: outputBuffer)
+
+            if let floatData = outputBuffer.floatChannelData?[0] {
+                let count = Int(outputBuffer.frameLength)
+                let samples = Array(UnsafeBufferPointer(start: floatData, count: count))
+                tapState.appendSamples(samples)
+            }
+        }
+    }
+}
+
 @MainActor
 final class AudioRecorder: ObservableObject {
     private var audioEngine: AVAudioEngine?
-    private var audioFile: AVAudioFile?
+    private let tapState = AudioTapState()
+    private var levelTimer: Timer?
     private(set) var recordingURL: URL?
     private var startTime: Date?
-    private nonisolated let audioSamplesLock = NSLock()
-    private nonisolated(unsafe) var _audioSamples: [Float] = []
 
     @Published var isRecording = false
     @Published var audioLevel: Float = 0.0
@@ -37,9 +144,7 @@ final class AudioRecorder: ObservableObject {
     /// Get a copy of accumulated 16kHz mono float samples for streaming transcription
     /// Thread-safe: can be called from any isolation context
     nonisolated var audioSamples: [Float] {
-        audioSamplesLock.lock()
-        defer { audioSamplesLock.unlock() }
-        return _audioSamples
+        tapState.samples
     }
 
     var recordingDuration: TimeInterval {
@@ -135,9 +240,7 @@ final class AudioRecorder: ObservableObject {
     // MARK: - Recording
 
     func startRecording(inputDeviceID: AudioDeviceID? = nil) throws -> URL {
-        audioSamplesLock.lock()
-        _audioSamples.removeAll()
-        audioSamplesLock.unlock()
+        tapState.reset()
 
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("audio_input_\(UUID().uuidString).wav")
@@ -166,8 +269,8 @@ final class AudioRecorder: ObservableObject {
         let inputNode = engine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
 
-        // Create WAV file for writing
-        let settings: [String: Any] = [
+        // File format on disk: 16kHz 16-bit int PCM mono WAV
+        let fileSettings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatLinearPCM),
             AVSampleRateKey: 16000.0,
             AVNumberOfChannelsKey: 1,
@@ -176,72 +279,45 @@ final class AudioRecorder: ObservableObject {
             AVLinearPCMIsBigEndianKey: false,
         ]
 
-        let outputFormat = AVAudioFormat(settings: settings)!
+        // Processing format: Float32 at 16kHz mono.
+        // AVAudioFile's default processingFormat is Float32, so buffers must match.
+        // Using Float32 also lets us read floatChannelData for streaming transcription.
+        let outputFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
         let converter = AVAudioConverter(from: recordingFormat, to: outputFormat)!
 
-        audioFile = try AVAudioFile(forWriting: url, settings: settings)
+        tapState.audioFile = try AVAudioFile(
+            forWriting: url, settings: fileSettings,
+            commonFormat: .pcmFormatFloat32, interleaved: false)
+        tapState.converter = converter
+        tapState.outputFormat = outputFormat
+        tapState.sampleRateRatio = outputFormat.sampleRate / recordingFormat.sampleRate
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: recordingFormat) {
-            [weak self] buffer, _ in
-            // Calculate audio level
-            guard let channelData = buffer.floatChannelData?[0] else { return }
-            let frameLength = Int(buffer.frameLength)
-            var sum: Float = 0
-            for i in 0..<frameLength {
-                sum += channelData[i] * channelData[i]
-            }
-            let rms = sqrt(sum / Float(frameLength))
-            let level = max(0, min(1, rms * 5))
-
-            Task { @MainActor [weak self] in
-                self?.audioLevel = level
-                self?.rawRMS = rms
-            }
-
-            // Convert and write to file
-            let ratio = outputFormat.sampleRate / recordingFormat.sampleRate
-            let outputFrameCapacity = AVAudioFrameCount(
-                ceil(Double(buffer.frameLength) * ratio))
-            guard
-                let outputBuffer = AVAudioPCMBuffer(
-                    pcmFormat: outputFormat, frameCapacity: outputFrameCapacity)
-            else { return }
-
-            var error: NSError?
-            let inputBuffer = buffer
-            nonisolated(unsafe) var gotData = false
-            converter.convert(to: outputBuffer, error: &error) { _, status in
-                if gotData {
-                    status.pointee = .noDataNow
-                    return nil
-                }
-                gotData = true
-                status.pointee = .haveData
-                return inputBuffer
-            }
-
-            if error == nil, outputBuffer.frameLength > 0 {
-                try? self?.audioFile?.write(from: outputBuffer)
-
-                // Accumulate 16kHz float samples for streaming transcription
-                if let floatData = outputBuffer.floatChannelData?[0] {
-                    let count = Int(outputBuffer.frameLength)
-                    let samples = Array(UnsafeBufferPointer(start: floatData, count: count))
-                    self?.audioSamplesLock.lock()
-                    self?._audioSamples.append(contentsOf: samples)
-                    self?.audioSamplesLock.unlock()
-                }
-            }
-        }
+        // Install tap via nonisolated free function so the closure is created
+        // outside @MainActor context, preventing Swift 6 runtime isolation checks.
+        installAudioTap(on: inputNode, format: recordingFormat, tapState: tapState)
 
         engine.prepare()
         do {
             try engine.start()
         } catch {
             engine.inputNode.removeTap(onBus: 0)
-            audioFile = nil
+            tapState.audioFile = nil
             try? FileManager.default.removeItem(at: url)
             throw error
+        }
+
+        // Poll audio levels from tapState and update @Published properties on main thread.
+        // Use Task { @MainActor in } instead of MainActor.assumeIsolated because
+        // Timer callbacks lack a Swift Task context, causing swift_task_isMainExecutorImpl
+        // to crash on macOS 26 when checking executor identity.
+        let pollTapState = self.tapState
+        self.levelTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) {
+            [weak self] _ in
+            Task { @MainActor in
+                self?.audioLevel = pollTapState.audioLevel
+                self?.rawRMS = pollTapState.rawRMS
+            }
         }
 
         self.audioEngine = engine
@@ -257,18 +333,17 @@ final class AudioRecorder: ObservableObject {
 
         let duration = recordingDuration
 
+        levelTimer?.invalidate()
+        levelTimer = nil
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
 
-        audioFile = nil
+        tapState.reset()
         audioEngine = nil
         isRecording = false
         audioLevel = 0
         rawRMS = 0
         startTime = nil
-        audioSamplesLock.lock()
-        _audioSamples.removeAll()
-        audioSamplesLock.unlock()
 
         return (url: url, duration: duration)
     }

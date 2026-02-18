@@ -1,16 +1,36 @@
 import Carbon
 import Foundation
 
+/// Carbon event handler callback defined at file scope (nonisolated) to prevent
+/// Swift 6 from inserting implicit MainActor isolation checks. Carbon callbacks
+/// lack a Swift Task context, causing swift_task_isMainExecutorImpl to crash on
+/// macOS 26 when the runtime tries to verify executor identity.
+private func hotkeyEventHandler(
+    _: EventHandlerCallRef?, event: EventRef?, _: UnsafeMutableRawPointer?
+) -> OSStatus {
+    guard let event = event else { return OSStatus(eventNotHandledErr) }
+    let eventKind = GetEventKind(event)
+
+    Task { @MainActor in
+        if eventKind == UInt32(kEventHotKeyPressed) {
+            HotkeyManager.shared?.onKeyDown?()
+        } else if eventKind == UInt32(kEventHotKeyReleased) {
+            HotkeyManager.shared?.onKeyUp?()
+        }
+    }
+    return noErr
+}
+
 @MainActor
 final class HotkeyManager {
     private var hotkeyRefs: [EventHotKeyRef] = []
     private var eventHandler: EventHandlerRef?
-    private var onKeyDown: (() -> Void)?
-    private var onKeyUp: (() -> Void)?
+    fileprivate var onKeyDown: (() -> Void)?
+    fileprivate var onKeyUp: (() -> Void)?
     private var nextHotkeyID: UInt32 = 1
 
     // Static reference for C callback
-    nonisolated(unsafe) private static var shared: HotkeyManager?
+    nonisolated(unsafe) static var shared: HotkeyManager?
 
     func register(keyCode: UInt32, modifiers: UInt32, onKeyDown: @escaping () -> Void, onKeyUp: @escaping () -> Void) {
         self.onKeyDown = onKeyDown
@@ -54,19 +74,7 @@ final class HotkeyManager {
 
         InstallEventHandler(
             GetApplicationEventTarget(),
-            { _, event, _ -> OSStatus in
-                guard let event = event else { return OSStatus(eventNotHandledErr) }
-                let eventKind = GetEventKind(event)
-
-                Task { @MainActor in
-                    if eventKind == UInt32(kEventHotKeyPressed) {
-                        HotkeyManager.shared?.onKeyDown?()
-                    } else if eventKind == UInt32(kEventHotKeyReleased) {
-                        HotkeyManager.shared?.onKeyUp?()
-                    }
-                }
-                return noErr
-            },
+            hotkeyEventHandler,
             eventTypes.count,
             &eventTypes,
             nil,

@@ -6,3 +6,5 @@ ralph.log
 DerivedData/
 .DS_Store
 build/
+vendor/whisper/lib/
+vendor/whisper/.version

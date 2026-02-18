@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 struct MenuBarView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var settings: AppSettings
-    var whisperTranscriber: WhisperKitTranscriber
+    var whisperTranscriber: WhisperTranscriber
     @State private var showSettings = false
     @State private var showHistory = false
 

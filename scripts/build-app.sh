@@ -8,6 +8,9 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
+echo "=== Building whisper.cpp dependency ==="
+"$PROJECT_DIR/scripts/build-whisper-lib.sh"
+
 echo "=== Building $APP_NAME ==="
 cd "$PROJECT_DIR"
 swift build -c release 2>&1

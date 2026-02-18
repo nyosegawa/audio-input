@@ -8,7 +8,7 @@ enum TranscriptionProvider: String, CaseIterable, Codable, Sendable {
 
     var displayName: String {
         switch self {
-        case .local: "ローカル (WhisperKit)"
+        case .local: "ローカル (whisper.cpp)"
         case .openAI: "OpenAI (gpt-4o-mini-transcribe)"
         case .gemini: "Gemini 2.5 Flash"
         }
@@ -20,18 +20,24 @@ enum TranscriptionProvider: String, CaseIterable, Codable, Sendable {
 }
 
 enum WhisperModel: String, CaseIterable, Sendable {
-    case tiny = "openai_whisper-tiny"
-    case base = "openai_whisper-base"
-    case small = "openai_whisper-small"
-    case largeTurbo = "openai_whisper-large-v3_turbo"
+    case tiny = "ggml-tiny-q5_1"
+    case base = "ggml-base"
+    case small = "ggml-small-q5_1"
+    case largeTurbo = "ggml-large-v3-turbo-q5_0"
 
     var displayName: String {
         switch self {
-        case .tiny: "Tiny (~40MB, 高速・低精度)"
-        case .base: "Base (~140MB, バランス)"
-        case .small: "Small (~460MB, 高精度)"
-        case .largeTurbo: "Large v3 Turbo (~800MB, 最高精度)"
+        case .tiny: "Tiny Q5 (~32MB, 高速・低精度)"
+        case .base: "Base (~148MB, バランス)"
+        case .small: "Small Q5 (~190MB, 高精度)"
+        case .largeTurbo: "Large v3 Turbo Q5 (~574MB, 最高精度)"
         }
+    }
+
+    var filename: String { rawValue + ".bin" }
+
+    var downloadURL: URL {
+        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(filename)")!
     }
 }
 

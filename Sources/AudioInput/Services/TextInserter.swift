@@ -6,15 +6,18 @@ final class TextInserter {
     private var previousClipboard: [NSPasteboard.PasteboardType: Data] = [:]
 
     func insert(text: String) async {
+        NSLog("[INSERT] Starting insert for text: %@", String(text.prefix(50)))
         saveClipboard()
         setClipboard(text: text)
 
         // Capture change count after we set the clipboard
         let changeCountAfterSet = NSPasteboard.general.changeCount
+        NSLog("[INSERT] Clipboard set, changeCount: %d", changeCountAfterSet)
 
         // Small delay to ensure clipboard is set
         try? await Task.sleep(for: .milliseconds(50))
 
+        NSLog("[INSERT] Simulating paste, AXIsProcessTrusted: %d", AXIsProcessTrusted() ? 1 : 0)
         simulatePaste()
 
         // Restore clipboard after delay, only if no external app modified it
