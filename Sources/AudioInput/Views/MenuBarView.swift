@@ -34,10 +34,15 @@ struct MenuBarView: View {
 
         Divider()
 
-        Picker("整形モード", selection: $settings.textProcessingMode) {
-            ForEach(TextProcessingMode.allCases, id: \.self) { mode in
-                Text(mode.displayName).tag(mode)
+        if !settings.openRouterKey.isEmpty && !settings.openRouterModel.isEmpty {
+            Picker("整形モード", selection: $settings.textProcessingMode) {
+                ForEach(TextProcessingMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
             }
+        } else {
+            Text("整形: 設定でAPI Key/モデルを設定")
+                .foregroundStyle(.secondary)
         }
 
         Divider()

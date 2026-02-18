@@ -6,7 +6,10 @@ struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     var appState: AppState
     @ObservedObject var whisperTranscriber: WhisperTranscriber
+    @ObservedObject var openRouterService: OpenRouterService
+    var onSwitchModel: (WhisperModel) -> Void
     @State private var inputDevices: [AudioInputDevice] = []
+    @State private var selectedModel: WhisperModel = .largeTurbo
 
     var body: some View {
         Form {
@@ -27,17 +30,23 @@ struct SettingsView: View {
                         Text(provider.displayName).tag(provider)
                     }
                 }
-                .help("ローカル: オフライン・リアルタイム表示・無料。OpenAI: 高精度 ($0.003/分)。Gemini: 無料枠あり")
 
                 if settings.provider.isLocal {
-                    Picker("モデル", selection: $settings.whisperModel) {
+                    Picker("モデル", selection: $selectedModel) {
                         ForEach(WhisperModel.allCases, id: \.self) { model in
                             Text(model.displayName).tag(model)
                         }
                     }
-                    .help("大きいモデルほど精度が高いですが、メモリと処理時間が増えます。M2ではLarge v3 Turboを推奨")
 
                     modelStatusView
+                }
+
+                if settings.provider == .openAI {
+                    SecureField("OpenAI API Key", text: $settings.openAIKey)
+                }
+
+                if settings.provider == .gemini {
+                    SecureField("Gemini API Key", text: $settings.geminiKey)
                 }
 
                 Picker("言語", selection: $settings.language) {
@@ -45,16 +54,21 @@ struct SettingsView: View {
                     Text("English").tag("en")
                     Text("自動検出").tag("auto")
                 }
-                .help("言語を指定すると認識精度が向上します。多言語を混在する場合は「自動検出」を選択してください")
             }
 
             Section("テキスト処理") {
+                if settings.openRouterKey.isEmpty || settings.openRouterModel.isEmpty {
+                    Text("モデルを選択してAPI Keyを入力してください")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+
                 Picker("整形モード", selection: $settings.textProcessingMode) {
                     ForEach(TextProcessingMode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode)
                     }
                 }
-                .help("「そのまま」以外を選択すると、AIが文字起こし結果を整形します。追加のAPI呼び出し（OpenAI gpt-4o-mini）が発生します")
+                .disabled(settings.openRouterKey.isEmpty || settings.openRouterModel.isEmpty)
 
                 if settings.textProcessingMode == .custom {
                     VStack(alignment: .leading, spacing: 4) {
@@ -66,15 +80,16 @@ struct SettingsView: View {
                             .frame(height: 100)
                             .border(Color.secondary.opacity(0.3))
                     }
-                    .help("AIに送るシステムプロンプトを自由に設定できます。例:「英語に翻訳してください」「箇条書きにまとめてください」")
                 }
-            }
 
-            Section("APIキー") {
-                SecureField("OpenAI API Key", text: $settings.openAIKey)
-                    .help("OpenAIの音声認識とテキスト整形に使用します。.envファイルでも設定可能です")
-                SecureField("Gemini API Key", text: $settings.geminiKey)
-                    .help("Gemini音声認識に使用します。.envファイルでも設定可能です")
+                Picker("モデル", selection: $settings.openRouterModel) {
+                    Text("未選択").tag("")
+                    ForEach(openRouterService.availableModels) { model in
+                        Text(model.name).tag(model.id)
+                    }
+                }
+
+                SecureField("OpenRouter API Key", text: $settings.openRouterKey)
             }
 
             Section("録音") {
@@ -118,6 +133,13 @@ struct SettingsView: View {
         .frame(width: 420, height: 580)
         .onAppear {
             inputDevices = AudioRecorder.availableInputDevices()
+            selectedModel = settings.whisperModel
+        }
+        .onChange(of: selectedModel) {
+            // Clear error/download state when user picks a different model
+            if case .error = appState.modelDownloadState {
+                appState.modelDownloadState = .notDownloaded
+            }
         }
     }
 
@@ -125,55 +147,67 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var modelStatusView: some View {
-        let model = settings.whisperModel
-        let isDownloaded = whisperTranscriber.isModelDownloaded(model)
+        let isSelectedLoaded = whisperTranscriber.loadedModel == selectedModel
+        let isDownloaded = whisperTranscriber.isModelDownloaded(selectedModel)
 
-        if isDownloaded {
+        if case .loading = appState.modelDownloadState {
+            HStack {
+                ProgressView()
+                    .controlSize(.small)
+                Text("モデルをロード中...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } else if case .downloading(let progress) = appState.modelDownloadState {
+            VStack(alignment: .leading, spacing: 4) {
+                if progress > 0 {
+                    HStack {
+                        ProgressView(value: progress)
+                        Text("\(Int(progress * 100))%")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                } else {
+                    HStack {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("ダウンロード中...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        } else if isSelectedLoaded {
             HStack {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                     .font(.system(size: 12))
-                Text("モデルダウンロード済み")
+                Text("使用中")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                if whisperTranscriber.isModelLoaded {
-                    Text("(読み込み済み)")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                }
-            }
-        } else if case .downloading(let progress) = appState.modelDownloadState {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    ProgressView(value: progress)
-                    Text("\(Int(progress * 100))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                Text("モデルをダウンロード中...")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } else if case .error(let msg) = appState.modelDownloadState {
-            HStack {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                    .font(.system(size: 12))
-                Text(msg)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .lineLimit(2)
+                    .foregroundStyle(.green)
             }
         } else {
-            HStack {
-                Image(systemName: "arrow.down.circle")
-                    .foregroundStyle(.orange)
-                    .font(.system(size: 12))
-                Text("モデル未ダウンロード（初回使用時に自動ダウンロード）")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if case .error(let msg) = appState.modelDownloadState {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                        .font(.system(size: 12))
+                    Text(msg)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                }
+            }
+
+            if isDownloaded {
+                Button("変更する") {
+                    onSwitchModel(selectedModel)
+                }
+            } else {
+                Button(appState.modelDownloadState.isError ? "リトライ" : "ダウンロードする") {
+                    onSwitchModel(selectedModel)
+                }
             }
         }
     }

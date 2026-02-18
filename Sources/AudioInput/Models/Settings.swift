@@ -24,6 +24,7 @@ enum WhisperModel: String, CaseIterable, Sendable {
     case base = "ggml-base"
     case small = "ggml-small-q5_1"
     case largeTurbo = "ggml-large-v3-turbo-q5_0"
+    case kotobaV2 = "ggml-kotoba-whisper-v2.0-q5_0"
 
     var displayName: String {
         switch self {
@@ -31,13 +32,19 @@ enum WhisperModel: String, CaseIterable, Sendable {
         case .base: "Base (~148MB, バランス)"
         case .small: "Small Q5 (~190MB, 高精度)"
         case .largeTurbo: "Large v3 Turbo Q5 (~574MB, 最高精度)"
+        case .kotobaV2: "Kotoba v2.0 Q5 (~538MB, 日本語特化)"
         }
     }
 
     var filename: String { rawValue + ".bin" }
 
     var downloadURL: URL {
-        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(filename)")!
+        switch self {
+        case .kotobaV2:
+            URL(string: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin")!
+        default:
+            URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(filename)")!
+        }
     }
 }
 
@@ -105,6 +112,12 @@ final class AppSettings: ObservableObject {
     @Published var whisperModel: WhisperModel {
         didSet { UserDefaults.standard.set(whisperModel.rawValue, forKey: "whisperModel") }
     }
+    @Published var openRouterKey: String {
+        didSet { UserDefaults.standard.set(openRouterKey, forKey: "openRouterKey") }
+    }
+    @Published var openRouterModel: String {
+        didSet { UserDefaults.standard.set(openRouterModel, forKey: "openRouterModel") }
+    }
     @Published var launchAtLogin: Bool {
         didSet { UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin") }
     }
@@ -127,6 +140,8 @@ final class AppSettings: ObservableObject {
         let storedSilenceThreshold = UserDefaults.standard.float(forKey: "silenceThreshold")
         self.silenceThreshold = storedSilenceThreshold > 0 ? storedSilenceThreshold : 0.01
         self.whisperModel = WhisperModel(rawValue: UserDefaults.standard.string(forKey: "whisperModel") ?? "") ?? .largeTurbo
+        self.openRouterKey = UserDefaults.standard.string(forKey: "openRouterKey") ?? ""
+        self.openRouterModel = UserDefaults.standard.string(forKey: "openRouterModel") ?? ""
         self.launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
 
         // Default hotkey: Option+Space
@@ -141,6 +156,7 @@ final class AppSettings: ObservableObject {
     private func loadFromEnvFile() {
         let envPaths = [
             FileManager.default.currentDirectoryPath + "/.env",
+            Bundle.main.bundlePath + "/Contents/Resources/.env",
             Bundle.main.bundlePath + "/Contents/MacOS/.env",
             Bundle.main.bundlePath + "/.env",
         ]
@@ -158,6 +174,8 @@ final class AppSettings: ObservableObject {
                         if openAIKey.isEmpty { openAIKey = value }
                     case "GEMINI_API_KEY":
                         if geminiKey.isEmpty { geminiKey = value }
+                    case "OPENROUTER_API_KEY":
+                        if openRouterKey.isEmpty { openRouterKey = value }
                     default:
                         break
                     }

@@ -30,8 +30,14 @@ struct TranscriptionRecord: Identifiable, Codable, Sendable {
 enum ModelDownloadState: Sendable {
     case notDownloaded
     case downloading(Double)
+    case loading
     case downloaded
     case error(String)
+
+    var isError: Bool {
+        if case .error = self { return true }
+        return false
+    }
 }
 
 @MainActor

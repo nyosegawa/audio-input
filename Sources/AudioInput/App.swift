@@ -29,6 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let textInserter = TextInserter()
     let hotkeyManager = HotkeyManager()
     let whisperTranscriber = WhisperTranscriber()
+    let openRouterService = OpenRouterService()
 
     private var overlayWindow: NSWindow?
     private var settingsWindow: NSWindow?
@@ -51,6 +52,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         loadWhisperModelIfNeeded()
         loadStreamingModelIfNeeded()
         startAccessibilityMonitor()
+        Task { await openRouterService.fetchModels() }
         playStartupSound()
         AppLogger.log("[APP] Launch complete - provider: \(settings.provider.rawValue), AXTrusted: \(AXIsProcessTrusted()), logFile: \(AppLogger.logPath)")
     }
@@ -296,7 +298,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let language = settings.language
         let processingMode = settings.textProcessingMode
         let customPrompt = settings.customPrompt
-        let processorKey = settings.openAIKey
+        let processorKey = settings.openRouterKey
+        let processorModel = settings.openRouterModel
         let useLocal = provider.isLocal && whisperTranscriber.isModelLoaded
 
         transcriptionTask = Task { @MainActor in
@@ -323,7 +326,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // Apply text processing if enabled
                 if processingMode != .none {
                     appState.status = .processing
-                    let processor = TextProcessor(apiKey: processorKey)
+                    let processor = TextProcessor(apiKey: processorKey, model: processorModel)
                     let inputText = text
                     do {
                         text = try await RetryHelper.withRetry {
@@ -418,6 +421,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // No-op: whisper.cpp uses a single model for both streaming and final transcription
     }
 
+    func switchWhisperModel(to model: WhisperModel) {
+        AppLogger.log("[WHISPER] Switching model to: \(model.rawValue)")
+        let alreadyDownloaded = whisperTranscriber.isModelDownloaded(model)
+        whisperTranscriber.unloadModel()
+        settings.whisperModel = model
+        appState.modelDownloadState = alreadyDownloaded ? .loading : .downloading(0)
+
+        Task { @MainActor in
+            do {
+                try await whisperTranscriber.ensureModelReady(model) { progress in
+                    self.appState.modelDownloadState = .downloading(progress)
+                }
+                self.appState.modelDownloadState = .downloaded
+                AppLogger.log("[WHISPER] Model switched successfully to: \(model.rawValue)")
+            } catch {
+                self.appState.modelDownloadState = .error(error.localizedDescription)
+                AppLogger.log("[WHISPER] Model switch failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: - Settings / History Windows
 
     func openSettings() {
@@ -426,7 +450,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let view = SettingsView(settings: settings, appState: appState, whisperTranscriber: whisperTranscriber)
+        let view = SettingsView(
+            settings: settings,
+            appState: appState,
+            whisperTranscriber: whisperTranscriber,
+            openRouterService: openRouterService,
+            onSwitchModel: { [weak self] model in self?.switchWhisperModel(to: model) }
+        )
         let hostingController = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "AudioInput 設定"

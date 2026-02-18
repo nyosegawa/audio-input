@@ -22,9 +22,9 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 # Copy binary
 cp ".build/release/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 
-# Copy .env file if exists
+# Copy .env file if exists (to Resources to avoid codesign issues)
 if [ -f "$PROJECT_DIR/.env" ]; then
-    cp "$PROJECT_DIR/.env" "$MACOS_DIR/.env"
+    cp "$PROJECT_DIR/.env" "$RESOURCES_DIR/.env"
 fi
 
 # Create Info.plist

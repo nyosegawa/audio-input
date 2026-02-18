@@ -89,6 +89,7 @@ enum TextProcessingError: Error, LocalizedError {
 
 struct TextProcessor: Sendable {
     let apiKey: String
+    let model: String
 
     func process(text: String, mode: TextProcessingMode, customPrompt: String? = nil) async throws -> String {
         let systemPrompt: String
@@ -99,10 +100,10 @@ struct TextProcessor: Sendable {
             guard let prompt = mode.systemPrompt else { return text }
             systemPrompt = prompt
         }
-        guard !apiKey.isEmpty else { return text }
+        guard !apiKey.isEmpty, !model.isEmpty else { return text }
 
         let requestBody: [String: Any] = [
-            "model": "gpt-4o-mini",
+            "model": model,
             "messages": [
                 ["role": "system", "content": systemPrompt],
                 ["role": "user", "content": text],
@@ -113,10 +114,11 @@ struct TextProcessor: Sendable {
 
         let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
 
-        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
+        var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/chat/completions")!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("AudioInput", forHTTPHeaderField: "X-Title")
         request.httpBody = jsonData
         request.timeoutInterval = 15
 

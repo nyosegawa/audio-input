@@ -92,6 +92,7 @@ final class WhisperTranscriber: ObservableObject {
     @Published var isStreamingModelLoaded = false
     @Published var isDownloading = false
     @Published var downloadProgress: Double = 0.0
+    @Published var loadedModel: WhisperModel?
 
     /// Base directory for model files
     private var modelsDir: URL {
@@ -165,7 +166,8 @@ final class WhisperTranscriber: ObservableObject {
         whisperContext = ctx
         isModelLoaded = true
         isStreamingModelLoaded = true
-        NSLog("[WHISPER] Model loaded successfully")
+        loadedModel = model
+        NSLog("[WHISPER] Model loaded successfully: %@", model.rawValue)
     }
 
     func ensureModelReady(_ model: WhisperModel, onProgress: @escaping @MainActor @Sendable (Double) -> Void) async throws {
@@ -409,6 +411,7 @@ final class WhisperTranscriber: ObservableObject {
         whisperContext = nil
         isModelLoaded = false
         isStreamingModelLoaded = false
+        loadedModel = nil
     }
 
     func unloadStreamingModel() {
@@ -439,9 +442,19 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
         totalBytesWritten: Int64,
         totalBytesExpectedToWrite: Int64
     ) {
-        guard totalBytesExpectedToWrite > 0 else { return }
-        let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        onProgress(fraction)
+        if totalBytesExpectedToWrite > 0 {
+            let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+            onProgress(fraction)
+        } else {
+            // Content-Length unknown: use response header if available
+            if let response = downloadTask.response as? HTTPURLResponse,
+               let lengthStr = response.value(forHTTPHeaderField: "Content-Length"),
+               let totalBytes = Int64(lengthStr), totalBytes > 0 {
+                let fraction = Double(totalBytesWritten) / Double(totalBytes)
+                onProgress(fraction)
+            }
+            // If still unknown, leave progress at 0 (indeterminate spinner shown)
+        }
     }
 
     func urlSession(
