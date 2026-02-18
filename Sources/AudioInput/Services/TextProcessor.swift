@@ -72,17 +72,66 @@ enum TextProcessingMode: String, CaseIterable, Sendable {
 
 enum TextProcessingError: Error, LocalizedError {
     case networkError(Error)
-    case apiError(String)
+    case openRouterError(code: Int, message: String)
     case invalidResponse
 
     var errorDescription: String? {
         switch self {
         case .networkError(let error):
-            return "テキスト整形ネットワークエラー: \(error.localizedDescription)"
-        case .apiError(let message):
-            return "テキスト整形APIエラー: \(message)"
+            "テキスト整形ネットワークエラー: \(error.localizedDescription)"
+        case .openRouterError(let code, let message):
+            "テキスト整形APIエラー (HTTP \(code)): \(message)"
         case .invalidResponse:
-            return "テキスト整形: 不正なレスポンス"
+            "テキスト整形: 不正なレスポンス"
+        }
+    }
+
+    /// User-facing short message for overlay display
+    var userMessage: String {
+        switch self {
+        case .networkError:
+            "整形失敗: ネットワークエラー"
+        case .openRouterError(let code, let raw):
+            switch code {
+            case 400:
+                "整形失敗: リクエストが不正です"
+            case 401:
+                "整形失敗: APIキーが無効です。設定を確認してください"
+            case 402:
+                "整形失敗: OpenRouterのクレジットが不足しています"
+            case 403:
+                "整形失敗: コンテンツがモデレーションに引っかかりました"
+            case 404:
+                if raw.contains("data policy") {
+                    "整形失敗: OpenRouterのPrivacy設定を確認してください"
+                } else {
+                    "整形失敗: モデルが見つかりません"
+                }
+            case 408:
+                "整形失敗: タイムアウト。再試行してください"
+            case 429:
+                "整形失敗: レート制限中。しばらく待ってください"
+            case 502:
+                "整形失敗: モデルが応答不能です。別のモデルを試してください"
+            case 503:
+                "整形失敗: 利用可能なプロバイダがありません"
+            default:
+                "整形失敗: HTTP \(code)"
+            }
+        case .invalidResponse:
+            "整形失敗: 不正なレスポンス"
+        }
+    }
+
+    var isRetryable: Bool {
+        switch self {
+        case .networkError:
+            true
+        case .openRouterError(let code, _):
+            // 429 rate limit, 408 timeout, 502/503 server issues are retryable
+            [408, 429, 502, 503].contains(code)
+        case .invalidResponse:
+            false
         }
     }
 }
@@ -95,12 +144,20 @@ struct TextProcessor: Sendable {
         let systemPrompt: String
         if mode == .custom {
             guard let custom = customPrompt, !custom.isEmpty else { return text }
-            systemPrompt = custom
+            systemPrompt = """
+            以下の指示に従って、ユーザーの音声認識テキストを変換してください。
+            変換後のテキストのみを返してください。説明・補足・挨拶は一切不要です。
+
+            指示: \(custom)
+            """
         } else {
             guard let prompt = mode.systemPrompt else { return text }
             systemPrompt = prompt
         }
-        guard !apiKey.isEmpty, !model.isEmpty else { return text }
+        guard !apiKey.isEmpty, !model.isEmpty else {
+            AppLogger.log("[PROCESS] Skipped: apiKey.isEmpty=\(apiKey.isEmpty), model.isEmpty=\(model.isEmpty)")
+            return text
+        }
 
         let requestBody: [String: Any] = [
             "model": model,
@@ -134,8 +191,8 @@ struct TextProcessor: Sendable {
         }
 
         guard httpResponse.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw TextProcessingError.apiError("HTTP \(httpResponse.statusCode): \(body)")
+            let errorMessage = Self.parseOpenRouterError(data: data, statusCode: httpResponse.statusCode)
+            throw TextProcessingError.openRouterError(code: httpResponse.statusCode, message: errorMessage)
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -149,5 +206,21 @@ struct TextProcessor: Sendable {
 
         let processed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         return processed.isEmpty ? text : processed
+    }
+
+    /// Parse OpenRouter error JSON to extract the message
+    private static func parseOpenRouterError(data: Data, statusCode: Int) -> String {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = json["error"] as? [String: Any] else {
+            return String(data: data, encoding: .utf8) ?? "Unknown error"
+        }
+
+        // Extract metadata.raw for upstream provider errors (e.g., 429 rate limit details)
+        if let metadata = error["metadata"] as? [String: Any],
+           let raw = metadata["raw"] as? String {
+            return raw
+        }
+
+        return error["message"] as? String ?? "Unknown error"
     }
 }

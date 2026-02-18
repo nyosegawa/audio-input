@@ -49,6 +49,7 @@ final class AppState {
     var confirmedStreamingText: String = ""
     var hypothesisStreamingText: String = ""
     var modelDownloadState: ModelDownloadState = .notDownloaded
+    var processingError: String? = nil
     var history: [TranscriptionRecord] = []
     var micPermission: PermissionStatus = .notDetermined
     var accessibilityPermission: PermissionStatus = .notDetermined

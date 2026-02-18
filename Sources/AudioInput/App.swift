@@ -324,6 +324,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 try Task.checkCancellation()
 
                 // Apply text processing if enabled
+                appState.processingError = nil
+                AppLogger.log("[PROCESS] mode=\(processingMode.rawValue), keyEmpty=\(processorKey.isEmpty), model=\(processorModel)")
                 if processingMode != .none {
                     appState.status = .processing
                     let processor = TextProcessor(apiKey: processorKey, model: processorModel)
@@ -332,10 +334,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         text = try await RetryHelper.withRetry {
                             try await processor.process(text: inputText, mode: processingMode, customPrompt: customPrompt)
                         }
+                        AppLogger.log("[PROCESS] Done, result (\(text.count) chars): \(String(text.prefix(100)))")
                     } catch is CancellationError {
                         throw CancellationError()
                     } catch {
+                        AppLogger.log("[PROCESS] Error: \(error)")
                         NSSound(named: "Basso")?.play()
+                        appState.processingError = Self.processingErrorMessage(error)
                     }
                 }
 
@@ -440,6 +445,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 AppLogger.log("[WHISPER] Model switch failed: \(error.localizedDescription)")
             }
         }
+    }
+
+    // MARK: - Text Processing Error
+
+    private static func processingErrorMessage(_ error: Error) -> String {
+        if let tpError = error as? TextProcessingError {
+            return tpError.userMessage
+        }
+        return "整形失敗: \(error.localizedDescription)"
     }
 
     // MARK: - Settings / History Windows
@@ -646,7 +660,8 @@ struct OverlayContainer: View {
             status: appState.status,
             recordingStartTime: appState.recordingStartTime,
             confirmedStreamingText: appState.confirmedStreamingText,
-            hypothesisStreamingText: appState.hypothesisStreamingText
+            hypothesisStreamingText: appState.hypothesisStreamingText,
+            processingError: appState.processingError
         )
         .frame(width: AppDelegate.overlayWidth, alignment: .topLeading)
     }

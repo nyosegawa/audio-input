@@ -33,12 +33,16 @@ enum RetryHelper {
                 return false
             }
         }
-        // API rate limit or server errors
+        // Transcription API errors
         if case .apiError(let msg) = error as? TranscriptionError {
             return msg.contains("HTTP 429") || msg.contains("HTTP 5")
         }
         if case .networkError = error as? TranscriptionError {
             return true
+        }
+        // Text processing errors (OpenRouter)
+        if let tpError = error as? TextProcessingError {
+            return tpError.isRetryable
         }
         return false
     }

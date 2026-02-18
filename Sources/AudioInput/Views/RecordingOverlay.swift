@@ -6,6 +6,7 @@ struct RecordingOverlay: View {
     let recordingStartTime: Date?
     let confirmedStreamingText: String
     let hypothesisStreamingText: String
+    var processingError: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -58,6 +59,19 @@ struct RecordingOverlay: View {
                 if isTranscribing {
                     ProgressView()
                         .controlSize(.small)
+                }
+            }
+
+            // Processing error warning
+            if let processingError = processingError, case .success = status {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.system(size: 11))
+                    Text(processingError)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                        .lineLimit(2)
                 }
             }
 
