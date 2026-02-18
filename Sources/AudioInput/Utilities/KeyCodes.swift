@@ -14,3 +14,19 @@ struct HotkeyModifiers: OptionSet, Sendable {
     static let control = HotkeyModifiers(rawValue: UInt32(controlKey))
     static let shift = HotkeyModifiers(rawValue: UInt32(shiftKey))
 }
+
+enum HotkeyFormatter {
+    static func description(code: UInt32, modifiers: UInt32) -> String {
+        var parts: [String] = []
+        if modifiers & UInt32(optionKey) != 0 { parts.append("⌥") }
+        if modifiers & UInt32(cmdKey) != 0 { parts.append("⌘") }
+        if modifiers & UInt32(controlKey) != 0 { parts.append("⌃") }
+        if modifiers & UInt32(shiftKey) != 0 { parts.append("⇧") }
+        if code == KeyCodes.space {
+            parts.append("Space")
+        } else {
+            parts.append("Key(\(code))")
+        }
+        return parts.joined(separator: "+")
+    }
+}

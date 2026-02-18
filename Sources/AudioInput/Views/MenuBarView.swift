@@ -4,7 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct MenuBarView: View {
-    @ObservedObject var appState: AppState
+    var appState: AppState
     @ObservedObject var settings: AppSettings
     var whisperTranscriber: WhisperTranscriber
     @State private var showSettings = false
@@ -31,7 +31,7 @@ struct MenuBarView: View {
                     .font(.system(size: 11))
                 Text(settings.provider.displayName)
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
@@ -42,7 +42,7 @@ struct MenuBarView: View {
                     .font(.system(size: 11))
                 Text(settings.textProcessingMode.displayName)
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
@@ -55,7 +55,7 @@ struct MenuBarView: View {
                             .frame(width: 100)
                         Text("モデルDL中 \(Int(progress * 100))%")
                             .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
                     .padding(.horizontal, 12)
@@ -69,7 +69,7 @@ struct MenuBarView: View {
                     .font(.system(size: 11))
                 Text(hotkeyDescription)
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
@@ -81,11 +81,11 @@ struct MenuBarView: View {
                 } label: {
                     HStack {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
+                            .foregroundStyle(.orange)
                             .font(.system(size: 11))
                         Text("マイクが未許可 — クリックで設定を開く")
                             .font(.system(size: 11))
-                            .foregroundColor(.orange)
+                            .foregroundStyle(.orange)
                     }
                 }
                 .buttonStyle(.borderless)
@@ -99,11 +99,11 @@ struct MenuBarView: View {
                 } label: {
                     HStack {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
+                            .foregroundStyle(.orange)
                             .font(.system(size: 11))
                         Text("アクセシビリティが未許可 — クリックで設定を開く")
                             .font(.system(size: 11))
-                            .foregroundColor(.orange)
+                            .foregroundStyle(.orange)
                     }
                 }
                 .buttonStyle(.borderless)
@@ -202,17 +202,7 @@ struct MenuBarView: View {
     }
 
     private var hotkeyDescription: String {
-        var parts: [String] = []
-        let mods = settings.hotkeyModifiers
-        if mods & UInt32(optionKey) != 0 { parts.append("⌥") }
-        if mods & UInt32(cmdKey) != 0 { parts.append("⌘") }
-        if mods & UInt32(controlKey) != 0 { parts.append("⌃") }
-        if mods & UInt32(shiftKey) != 0 { parts.append("⇧") }
-        if settings.hotkeyCode == KeyCodes.space {
-            parts.append("Space")
-        } else {
-            parts.append("Key(\(settings.hotkeyCode))")
-        }
-        return parts.joined(separator: "+") + " / ⌃+⇧+Space で" + settings.recordingMode.displayName
+        HotkeyFormatter.description(code: settings.hotkeyCode, modifiers: settings.hotkeyModifiers)
+            + " / ⌃+⇧+Space で" + settings.recordingMode.displayName
     }
 }

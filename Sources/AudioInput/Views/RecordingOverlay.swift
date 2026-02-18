@@ -20,13 +20,13 @@ struct RecordingOverlay: View {
 
                     Image(systemName: micIconName)
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(micColor)
+                        .foregroundStyle(micColor)
                 }
 
                 // Status text
                 Text(statusText)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
 
                 // Elapsed time
                 if isRecording, let start = recordingStartTime {
@@ -36,7 +36,7 @@ struct RecordingOverlay: View {
                         let seconds = elapsed % 60
                         Text(String(format: "%d:%02d", minutes, seconds))
                             .font(.system(size: 13, weight: .medium, design: .monospaced))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -50,7 +50,7 @@ struct RecordingOverlay: View {
                 if case .success(let text) = status {
                     Text(text.count > 80 ? String(text.prefix(80)) + "..." : text)
                         .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .frame(maxWidth: 180, alignment: .leading)
                 }
@@ -64,7 +64,7 @@ struct RecordingOverlay: View {
             // Streaming transcription text (real-time during recording)
             if (!confirmedStreamingText.isEmpty || !hypothesisStreamingText.isEmpty) && (isRecording || isTranscribing) {
                 (Text(confirmedStreamingText).fontWeight(.medium) +
-                 Text(hypothesisStreamingText).foregroundColor(.secondary))
+                 Text(hypothesisStreamingText).foregroundStyle(.secondary))
                     .font(.system(size: 13))
                     .lineLimit(6)
                     .multilineTextAlignment(.leading)
@@ -74,7 +74,7 @@ struct RecordingOverlay: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(.rect(cornerRadius: 12))
         .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
     }
 

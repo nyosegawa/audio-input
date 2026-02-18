@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import SwiftUI
 
 enum AppStatus: Sendable {
@@ -34,16 +35,17 @@ enum ModelDownloadState: Sendable {
 }
 
 @MainActor
-final class AppState: ObservableObject {
-    @Published var status: AppStatus = .idle
-    @Published var audioLevel: Float = 0.0
-    @Published var recordingStartTime: Date? = nil
-    @Published var confirmedStreamingText: String = ""
-    @Published var hypothesisStreamingText: String = ""
-    @Published var modelDownloadState: ModelDownloadState = .notDownloaded
-    @Published var history: [TranscriptionRecord] = []
-    @Published var micPermission: PermissionStatus = .notDetermined
-    @Published var accessibilityPermission: PermissionStatus = .notDetermined
+@Observable
+final class AppState {
+    var status: AppStatus = .idle
+    var audioLevel: Float = 0.0
+    var recordingStartTime: Date? = nil
+    var confirmedStreamingText: String = ""
+    var hypothesisStreamingText: String = ""
+    var modelDownloadState: ModelDownloadState = .notDownloaded
+    var history: [TranscriptionRecord] = []
+    var micPermission: PermissionStatus = .notDetermined
+    var accessibilityPermission: PermissionStatus = .notDetermined
 
     var isRecording: Bool {
         if case .recording = status { return true }

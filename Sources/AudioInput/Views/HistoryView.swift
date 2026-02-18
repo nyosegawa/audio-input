@@ -24,7 +24,7 @@ struct HistoryView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     TextField("検索...", text: $searchText)
                         .textFieldStyle(.plain)
                         .font(.system(size: 12))
@@ -32,7 +32,7 @@ struct HistoryView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
                 .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(.rect(cornerRadius: 6))
 
                 if let onExport = onExport, !records.isEmpty {
                     Button {
@@ -54,7 +54,7 @@ struct HistoryView: View {
                 VStack {
                     Spacer()
                     Text(records.isEmpty ? "履歴なし" : "一致する結果なし")
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .font(.system(size: 12))
                     Spacer()
                 }
@@ -86,19 +86,19 @@ struct HistoryRow: View {
             HStack {
                 Text(record.date, style: .relative)
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 Text("\(String(format: "%.1f", record.duration))秒")
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 Text(record.provider.rawValue)
                     .font(.system(size: 9))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
                     .background(Color.secondary.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .clipShape(.rect(cornerRadius: 3))
 
                 Spacer()
 

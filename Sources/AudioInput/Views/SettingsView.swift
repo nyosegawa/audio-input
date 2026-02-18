@@ -4,7 +4,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
-    @ObservedObject var appState: AppState
+    var appState: AppState
     @ObservedObject var whisperTranscriber: WhisperTranscriber
     @State private var inputDevices: [AudioInputDevice] = []
 
@@ -60,7 +60,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("カスタムプロンプト")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                         TextEditor(text: $settings.customPrompt)
                             .font(.system(size: 12, design: .monospaced))
                             .frame(height: 100)
@@ -104,7 +104,7 @@ struct SettingsView: View {
                     Text("ホットキー")
                     Spacer()
                     Text(hotkeyDescription)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 .help("現在のホットキー設定です。変更するにはアプリの再設定が必要です")
             }
@@ -115,7 +115,9 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: dynamicHeight)
+        .frame(width: 420)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minHeight: 400, maxHeight: 800)
         .onAppear {
             inputDevices = AudioRecorder.availableInputDevices()
         }
@@ -131,16 +133,16 @@ struct SettingsView: View {
         if isDownloaded {
             HStack {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
+                    .foregroundStyle(.green)
                     .font(.system(size: 12))
                 Text("モデルダウンロード済み")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 if whisperTranscriber.isModelLoaded {
                     Text("(読み込み済み)")
                         .font(.caption)
-                        .foregroundColor(.green)
+                        .foregroundStyle(.green)
                 }
             }
         } else if case .downloading(let progress) = appState.modelDownloadState {
@@ -149,58 +151,37 @@ struct SettingsView: View {
                     ProgressView(value: progress)
                     Text("\(Int(progress * 100))%")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
                 Text("モデルをダウンロード中...")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
         } else if case .error(let msg) = appState.modelDownloadState {
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(.red)
+                    .foregroundStyle(.red)
                     .font(.system(size: 12))
                 Text(msg)
                     .font(.caption)
-                    .foregroundColor(.red)
+                    .foregroundStyle(.red)
                     .lineLimit(2)
             }
         } else {
             HStack {
                 Image(systemName: "arrow.down.circle")
-                    .foregroundColor(.orange)
+                    .foregroundStyle(.orange)
                     .font(.system(size: 12))
                 Text("モデル未ダウンロード（初回使用時に自動ダウンロード）")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
         }
     }
 
-    private var dynamicHeight: CGFloat {
-        var height: CGFloat = 520
-        if settings.provider.isLocal { height += 80 }
-        if settings.textProcessingMode == .custom { height += 120 }
-        if settings.recordingMode == .toggle { height += 30 }
-        if settings.recordingMode == .toggle && settings.silenceDetectionEnabled { height += 30 }
-        return height
-    }
 
     private var hotkeyDescription: String {
-        var parts: [String] = []
-        let mods = settings.hotkeyModifiers
-        if mods & UInt32(optionKey) != 0 { parts.append("⌥") }
-        if mods & UInt32(cmdKey) != 0 { parts.append("⌘") }
-        if mods & UInt32(controlKey) != 0 { parts.append("⌃") }
-        if mods & UInt32(shiftKey) != 0 { parts.append("⇧") }
-
-        if settings.hotkeyCode == KeyCodes.space {
-            parts.append("Space")
-        } else {
-            parts.append("Key(\(settings.hotkeyCode))")
-        }
-
-        return parts.joined(separator: "+")
+        HotkeyFormatter.description(code: settings.hotkeyCode, modifiers: settings.hotkeyModifiers)
     }
 }

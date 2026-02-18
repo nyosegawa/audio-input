@@ -12,7 +12,7 @@ struct AudioInputApp: App {
         } label: {
             Image(systemName: appDelegate.appState.isRecording ? "mic.fill" : "mic")
                 .symbolRenderingMode(.hierarchical)
-                .foregroundColor(appDelegate.appState.isRecording ? .red : .primary)
+                .foregroundStyle(appDelegate.appState.isRecording ? .red : .primary)
         }
         .menuBarExtraStyle(.window)
     }
@@ -510,7 +510,7 @@ final class ConstraintFreeContainer: NSView {
 // MARK: - Overlay Container
 
 struct OverlayContainer: View {
-    @ObservedObject var appState: AppState
+    var appState: AppState
 
     var body: some View {
         RecordingOverlay(
