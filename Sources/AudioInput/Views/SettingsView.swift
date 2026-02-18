@@ -115,9 +115,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(minHeight: 400, maxHeight: 800)
+        .frame(width: 420, height: 580)
         .onAppear {
             inputDevices = AudioRecorder.availableInputDevices()
         }

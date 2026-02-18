@@ -2,13 +2,9 @@ import SwiftUI
 
 struct HistoryView: View {
     let records: [TranscriptionRecord]
-    let onExport: (() -> Void)?
+    var onExport: (() -> Void)?
+    var onDismiss: (() -> Void)?
     @State private var searchText = ""
-
-    init(records: [TranscriptionRecord], onExport: (() -> Void)? = nil) {
-        self.records = records
-        self.onExport = onExport
-    }
 
     private var filteredRecords: [TranscriptionRecord] {
         if searchText.isEmpty { return records }
@@ -19,7 +15,7 @@ struct HistoryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Search bar
+            // Header
             HStack(spacing: 8) {
                 HStack(spacing: 4) {
                     Image(systemName: "magnifyingglass")
@@ -44,6 +40,16 @@ struct HistoryView: View {
                     .buttonStyle(.borderless)
                     .help("履歴をエクスポート")
                 }
+
+                Button {
+                    onDismiss?()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help("閉じる")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

@@ -8,13 +8,16 @@ struct AudioInputApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarView(appState: appDelegate.appState, settings: appDelegate.settings, whisperTranscriber: appDelegate.whisperTranscriber)
+            MenuBarView(
+                appState: appDelegate.appState,
+                settings: appDelegate.settings,
+                onOpenSettings: { appDelegate.openSettings() },
+                onOpenHistory: { appDelegate.openHistory() }
+            )
         } label: {
             Image(systemName: appDelegate.appState.isRecording ? "mic.fill" : "mic")
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(appDelegate.appState.isRecording ? .red : .primary)
         }
-        .menuBarExtraStyle(.window)
+        .menuBarExtraStyle(.menu)
     }
 }
 
@@ -28,11 +31,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let whisperTranscriber = WhisperTranscriber()
 
     private var overlayWindow: NSWindow?
+    private var settingsWindow: NSWindow?
+    private var historyWindow: NSWindow?
     private var audioLevelCancellable: AnyCancellable?
     private var silenceDetectionCancellable: AnyCancellable?
+    private var accessibilityTimer: Timer?
     private var silenceStartTime: Date?
     private var transcriptionTask: Task<Void, Never>?
     private var lastRecordingURL: URL?
+    private var targetAppPID: pid_t?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -43,14 +50,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         observeSilence()
         loadWhisperModelIfNeeded()
         loadStreamingModelIfNeeded()
+        startAccessibilityMonitor()
         playStartupSound()
-        NSLog("[APP] Launch complete - provider: \(settings.provider.rawValue), accessibility: \(AXIsProcessTrusted()), modelLoaded: \(whisperTranscriber.isModelLoaded)")
+        AppLogger.log("[APP] Launch complete - provider: \(settings.provider.rawValue), AXTrusted: \(AXIsProcessTrusted()), logFile: \(AppLogger.logPath)")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         hotkeyManager.unregister()
         audioLevelCancellable?.cancel()
         silenceDetectionCancellable?.cancel()
+        accessibilityTimer?.invalidate()
         dismissOverlay()
     }
 
@@ -68,11 +77,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if case .denied = appState.accessibilityPermission {
-            // Only prompt once; don't auto-prompt on every launch
-            // since rebuilds change code signature and trigger repeated dialogs
-            if !UserDefaults.standard.bool(forKey: "hasPromptedAccessibility") {
-                UserDefaults.standard.set(true, forKey: "hasPromptedAccessibility")
-                PermissionChecker.requestAccessibilityAccess()
+            // Prompt once per launch. macOS may show multiple dialogs if called repeatedly.
+            PermissionChecker.requestAccessibilityAccess()
+        }
+        // Note: startAccessibilityMonitor() detects subsequent grants without re-prompting.
+    }
+
+    private func startAccessibilityMonitor() {
+        var lastTrusted = AXIsProcessTrusted()
+        accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            let nowTrusted = AXIsProcessTrusted()
+            if nowTrusted != lastTrusted {
+                AppLogger.log("[AX] Permission changed: \(lastTrusted) → \(nowTrusted)")
+                lastTrusted = nowTrusted
+            }
+            Task { @MainActor in
+                self?.appState.accessibilityPermission = nowTrusted ? .granted : .denied
             }
         }
     }
@@ -123,7 +143,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             modifiers: settings.hotkeyModifiers,
             onKeyDown: { [weak self] in
                 guard let self = self else { return }
-                NSLog("[HOTKEY] keyDown - status: \(self.appState.status), isRecording: \(self.appState.isRecording), mode: \(self.settings.recordingMode)")
+                AppLogger.log("[HOTKEY] keyDown - status: \(self.appState.status), isRecording: \(self.appState.isRecording), AXTrusted: \(AXIsProcessTrusted())")
                 // Cancel transcription if in progress
                 if self.appState.isTranscribing {
                     self.cancelTranscription()
@@ -142,7 +162,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onKeyUp: { [weak self] in
                 guard let self = self else { return }
-                NSLog("[HOTKEY] keyUp - status: \(self.appState.status), isRecording: \(self.appState.isRecording), mode: \(self.settings.recordingMode)")
+                AppLogger.log("[HOTKEY] keyUp - isRecording: \(self.appState.isRecording)")
                 if self.settings.recordingMode == .pushToTalk && self.appState.isRecording {
                     // Debounce: if keyUp fires within 0.5s of recording start,
                     // ignore it (likely spurious from system key handling).
@@ -183,6 +203,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func startRecording() {
         NSLog("[RECORD] startRecording called, isRecording: \(appState.isRecording)")
         guard !appState.isRecording else { return }
+
+        // Capture the frontmost app so we can re-activate it before pasting
+        targetAppPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        NSLog("[RECORD] Target app PID: \(targetAppPID ?? -1), name: \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "nil")")
+
+        // Refresh permission state
+        appState.accessibilityPermission = PermissionChecker.accessibilityStatus()
 
         // Check microphone permission
         let micStatus = PermissionChecker.microphoneStatus()
@@ -321,7 +348,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
                 NSLog("[TRANSCRIBE] Result text (%d chars): %@", text.count, String(text.prefix(100)))
                 NSLog("[TRANSCRIBE] Accessibility: \(AXIsProcessTrusted())")
-                await textInserter.insert(text: text)
+                await textInserter.insert(text: text, targetPID: self.targetAppPID)
                 NSLog("[TRANSCRIBE] Text insertion done")
 
                 appState.status = .success(text)
@@ -389,6 +416,77 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func loadStreamingModelIfNeeded() {
         // No-op: whisper.cpp uses a single model for both streaming and final transcription
+    }
+
+    // MARK: - Settings / History Windows
+
+    func openSettings() {
+        if let window = settingsWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let view = SettingsView(settings: settings, appState: appState, whisperTranscriber: whisperTranscriber)
+        let hostingController = NSHostingController(rootView: view)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "AudioInput 設定"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.setContentSize(NSSize(width: 420, height: 580))
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow = window
+    }
+
+    func openHistory() {
+        let view = HistoryView(
+            records: appState.history,
+            onExport: { [weak self] in self?.exportHistory() },
+            onDismiss: { [weak self] in self?.historyWindow?.close() }
+        )
+        if let window = historyWindow,
+           let hostingController = window.contentViewController as? NSHostingController<HistoryView> {
+            hostingController.rootView = view
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let hostingController = NSHostingController(rootView: view)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "転写履歴"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        historyWindow = window
+    }
+
+    private func exportHistory() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = "audio-input-history.txt"
+        panel.title = "履歴をエクスポート"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+
+        var content = "AudioInput 転写履歴\n"
+        content += "エクスポート日時: \(dateFormatter.string(from: Date()))\n"
+        content += "件数: \(appState.history.count)\n"
+        content += String(repeating: "=", count: 60) + "\n\n"
+
+        for record in appState.history {
+            content += "[\(dateFormatter.string(from: record.date))] "
+            content += "(\(String(format: "%.1f", record.duration))秒, \(record.provider.rawValue))\n"
+            content += record.text + "\n"
+            content += String(repeating: "-", count: 40) + "\n"
+        }
+
+        try? content.write(to: url, atomically: true, encoding: .utf8)
     }
 
     // MARK: - Sound
