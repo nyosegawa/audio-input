@@ -63,8 +63,5 @@ PLIST
 # for accessibility/input monitoring permissions across rebuilds
 codesign --force --sign - --identifier "com.nyosegawa.audio-input" "$MACOS_DIR/$APP_NAME"
 
-# Reset TCC accessibility entry so macOS re-prompts for the new binary
-tccutil reset Accessibility com.nyosegawa.audio-input 2>/dev/null || true
-
 echo "=== App bundle created at: $APP_DIR ==="
 echo "Run with: open $APP_DIR"
