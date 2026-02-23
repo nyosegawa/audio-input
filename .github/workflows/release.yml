@@ -22,10 +22,11 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
 
-      - name: Update version in Info.plist
+      - name: Update version in Info.plist and re-sign
         run: |
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ steps.version.outputs.version }}" build/AudioInput.app/Contents/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ steps.version.outputs.version }}" build/AudioInput.app/Contents/Info.plist
+          codesign --force --sign - --identifier "com.nyosegawa.audio-input" build/AudioInput.app/Contents/MacOS/AudioInput
 
       - name: Build DMG
         run: ./scripts/build-dmg.sh
