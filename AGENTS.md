@@ -22,7 +22,7 @@ swift build                              # Build
 
 ## Release: `git tag vX.Y.Z && git push origin vX.Y.Z`
 
-CI自動実行: ビルド → DMG → GitHub Releases → homebrew-tap更新。前提: `HOMEBREW_TAP_TOKEN` secret。未署名(ad-hoc)、Cask postflightで`xattr -cr`。開発版とリリース版の同時使用はTCC権限競合するため禁止。
+CI auto: build → DMG → GitHub Releases → homebrew-tap update. Requires `HOMEBREW_TAP_TOKEN` secret. Unsigned (ad-hoc), Cask postflight runs `xattr -cr`. Never run dev and release builds simultaneously (TCC permission conflict).
 
 ## Code Conventions
 
