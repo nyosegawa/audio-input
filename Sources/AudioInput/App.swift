@@ -76,19 +76,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func checkPermissions() {
         appState.accessibilityPermission = PermissionChecker.accessibilityStatus()
         appState.micPermission = PermissionChecker.microphoneStatus()
+        AppLogger.log("[PERM] mic=\(appState.micPermission), ax=\(appState.accessibilityPermission)")
 
-        if case .notDetermined = appState.micPermission {
+        switch appState.micPermission {
+        case .notDetermined, .denied:
+            AppLogger.log("[PERM] Requesting mic access (status: \(appState.micPermission))")
             Task {
                 let granted = await PermissionChecker.requestMicrophoneAccess()
+                AppLogger.log("[PERM] Mic request result: \(granted)")
                 appState.micPermission = granted ? .granted : .denied
             }
+        case .granted:
+            break
         }
 
         if case .denied = appState.accessibilityPermission {
-            // Prompt once per launch. macOS may show multiple dialogs if called repeatedly.
             PermissionChecker.requestAccessibilityAccess()
         }
-        // Note: startAccessibilityMonitor() detects subsequent grants without re-prompting.
     }
 
     private func startAccessibilityMonitor() {
