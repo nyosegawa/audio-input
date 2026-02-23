@@ -34,6 +34,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var overlayWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var historyWindow: NSWindow?
+    private var onboardingWindow: NSWindow?
     private var audioLevelCancellable: AnyCancellable?
     private var silenceDetectionCancellable: AnyCancellable?
     private var accessibilityTimer: Timer?
@@ -41,6 +42,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var transcriptionTask: Task<Void, Never>?
     private var lastRecordingURL: URL?
     private var targetAppPID: pid_t?
+    private var inputContext: InputContext?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -55,6 +57,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await openRouterService.fetchModels() }
         playStartupSound()
         AppLogger.log("[APP] Launch complete - provider: \(settings.provider.rawValue), AXTrusted: \(AXIsProcessTrusted()), logFile: \(AppLogger.logPath)")
+
+        if !UserDefaults.standard.bool(forKey: "onboardingCompleted") {
+            showOnboarding()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -207,8 +213,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard !appState.isRecording else { return }
 
         // Capture the frontmost app so we can re-activate it before pasting
-        targetAppPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        NSLog("[RECORD] Target app PID: \(targetAppPID ?? -1), name: \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "nil")")
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        targetAppPID = frontApp?.processIdentifier
+        let appName = frontApp?.localizedName ?? ""
+        NSLog("[RECORD] Target app PID: \(targetAppPID ?? -1), name: \(appName)")
+
+        // Capture selected text for context-aware processing
+        let selectedText = Self.captureSelectedText()
+        inputContext = InputContext(selectedText: selectedText, appName: appName)
+        if !selectedText.isEmpty {
+            AppLogger.log("[CONTEXT] Selected text (\(selectedText.count) chars): \(String(selectedText.prefix(80)))")
+        }
 
         // Refresh permission state
         appState.accessibilityPermission = PermissionChecker.accessibilityStatus()
@@ -300,6 +315,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let customPrompt = settings.customPrompt
         let processorKey = settings.openRouterKey
         let processorModel = settings.openRouterModel
+        let capturedContext = inputContext
         let useLocal = provider.isLocal && whisperTranscriber.isModelLoaded
 
         transcriptionTask = Task { @MainActor in
@@ -332,7 +348,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     let inputText = text
                     do {
                         text = try await RetryHelper.withRetry {
-                            try await processor.process(text: inputText, mode: processingMode, customPrompt: customPrompt)
+                            try await processor.process(text: inputText, mode: processingMode, customPrompt: customPrompt, context: capturedContext)
                         }
                         AppLogger.log("[PROCESS] Done, result (\(text.count) chars): \(String(text.prefix(100)))")
                     } catch is CancellationError {
@@ -447,6 +463,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Context Capture
+
+    private static func captureSelectedText() -> String {
+        let systemWide = AXUIElementCreateSystemWide()
+
+        var focusedAppRef: AnyObject?
+        guard AXUIElementCopyAttributeValue(
+            systemWide, kAXFocusedApplicationAttribute as CFString, &focusedAppRef
+        ) == .success else { return "" }
+
+        var focusedElemRef: AnyObject?
+        guard AXUIElementCopyAttributeValue(
+            focusedAppRef as! AXUIElement, kAXFocusedUIElementAttribute as CFString, &focusedElemRef
+        ) == .success else { return "" }
+
+        var selectedTextRef: AnyObject?
+        guard AXUIElementCopyAttributeValue(
+            focusedElemRef as! AXUIElement, kAXSelectedTextAttribute as CFString, &selectedTextRef
+        ) == .success else { return "" }
+
+        let text = (selectedTextRef as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // Limit to 500 chars to avoid bloating prompts
+        return String(text.prefix(500))
+    }
+
     // MARK: - Text Processing Error
 
     private static func processingErrorMessage(_ error: Error) -> String {
@@ -454,6 +495,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return tpError.userMessage
         }
         return "整形失敗: \(error.localizedDescription)"
+    }
+
+    // MARK: - Onboarding
+
+    private func showOnboarding() {
+        let view = OnboardingView(
+            settings: settings,
+            appState: appState,
+            onComplete: { [weak self] in
+                self?.onboardingWindow?.close()
+                self?.onboardingWindow = nil
+                self?.loadWhisperModelIfNeeded()
+            }
+        )
+        let hostingController = NSHostingController(rootView: view)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "AudioInput セットアップ"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        onboardingWindow = window
     }
 
     // MARK: - Settings / History Windows
@@ -545,12 +609,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private static let overlayMaxHeight: CGFloat = 200
 
     private func showOverlay() {
+        let style = settings.overlayStyle
+        let width: CGFloat = style == .minimal ? 48 : Self.overlayWidth
+        let height: CGFloat = style == .minimal ? 48 : Self.overlayMaxHeight
+
         if overlayWindow == nil {
-            let initialFrame = NSRect(x: 0, y: 0, width: Self.overlayWidth, height: Self.overlayMaxHeight)
+            let initialFrame = NSRect(x: 0, y: 0, width: width, height: height)
             let container = ConstraintFreeContainer(frame: initialFrame)
             container.translatesAutoresizingMaskIntoConstraints = true
 
-            let hostingView = NSHostingView(rootView: OverlayContainer(appState: appState))
+            let hostingView = NSHostingView(rootView: OverlayContainer(appState: appState, style: style))
             hostingView.translatesAutoresizingMaskIntoConstraints = true
             hostingView.frame = container.bounds
             hostingView.autoresizingMask = [.width, .height]
@@ -580,10 +648,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }) ?? NSScreen.main
             if let screen = mouseScreen {
                 let screenFrame = screen.visibleFrame
-                let x = screenFrame.midX - Self.overlayWidth / 2
-                let y = screenFrame.maxY - Self.overlayMaxHeight - 10
+                let x = screenFrame.midX - width / 2
+                let y = screenFrame.maxY - height - 10
                 window.setFrame(
-                    NSRect(x: x, y: y, width: Self.overlayWidth, height: Self.overlayMaxHeight),
+                    NSRect(x: x, y: y, width: width, height: height),
                     display: true
                 )
             }
@@ -605,6 +673,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func dismissOverlay() {
         overlayWindow?.orderOut(nil)
+        // Reset window so style changes take effect on next show
+        overlayWindow = nil
     }
 }
 
@@ -653,6 +723,7 @@ final class ConstraintFreeContainer: NSView {
 
 struct OverlayContainer: View {
     var appState: AppState
+    var style: OverlayStyle
 
     var body: some View {
         RecordingOverlay(
@@ -661,8 +732,9 @@ struct OverlayContainer: View {
             recordingStartTime: appState.recordingStartTime,
             confirmedStreamingText: appState.confirmedStreamingText,
             hypothesisStreamingText: appState.hypothesisStreamingText,
-            processingError: appState.processingError
+            processingError: appState.processingError,
+            style: style
         )
-        .frame(width: AppDelegate.overlayWidth, alignment: .topLeading)
+        .frame(width: style == .minimal ? 48 : AppDelegate.overlayWidth, alignment: style == .minimal ? .center : .topLeading)
     }
 }

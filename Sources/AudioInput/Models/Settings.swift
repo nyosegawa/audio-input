@@ -48,6 +48,20 @@ enum WhisperModel: String, CaseIterable, Sendable {
     }
 }
 
+enum OverlayStyle: String, CaseIterable, Sendable {
+    case standard = "standard"
+    case compact = "compact"
+    case minimal = "minimal"
+
+    var displayName: String {
+        switch self {
+        case .standard: "標準（フル情報）"
+        case .compact: "コンパクト"
+        case .minimal: "ミニマル（ドット）"
+        }
+    }
+}
+
 enum RecordingMode: String, CaseIterable, Sendable {
     case pushToTalk = "push_to_talk"
     case toggle = "toggle"
@@ -121,6 +135,9 @@ final class AppSettings: ObservableObject {
     @Published var launchAtLogin: Bool {
         didSet { UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin") }
     }
+    @Published var overlayStyle: OverlayStyle {
+        didSet { UserDefaults.standard.set(overlayStyle.rawValue, forKey: "overlayStyle") }
+    }
 
     private init() {
         self.openAIKey = UserDefaults.standard.string(forKey: "openAIKey") ?? ""
@@ -143,6 +160,7 @@ final class AppSettings: ObservableObject {
         self.openRouterKey = UserDefaults.standard.string(forKey: "openRouterKey") ?? ""
         self.openRouterModel = UserDefaults.standard.string(forKey: "openRouterModel") ?? ""
         self.launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
+        self.overlayStyle = OverlayStyle(rawValue: UserDefaults.standard.string(forKey: "overlayStyle") ?? "") ?? .standard
 
         // Default hotkey: Option+Space
         if hotkeyCode == 0 && hotkeyModifiers == 0 {

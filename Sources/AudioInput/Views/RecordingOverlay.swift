@@ -7,47 +7,39 @@ struct RecordingOverlay: View {
     let confirmedStreamingText: String
     let hypothesisStreamingText: String
     var processingError: String? = nil
+    var style: OverlayStyle = .standard
 
     var body: some View {
+        switch style {
+        case .standard:
+            standardOverlay
+        case .compact:
+            compactOverlay
+        case .minimal:
+            minimalOverlay
+        }
+    }
+
+    // MARK: - Standard (full info)
+
+    private var standardOverlay: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 12) {
-                // Mic icon with pulse animation
-                ZStack {
-                    Circle()
-                        .fill(micColor.opacity(0.2))
-                        .frame(width: 36, height: 36)
-                        .scaleEffect(isRecording ? 1.0 + CGFloat(audioLevel) * 0.5 : 1.0)
-                        .animation(.easeInOut(duration: 0.1), value: audioLevel)
+                micIndicator(size: 36, iconSize: 16)
 
-                    Image(systemName: micIconName)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(micColor)
-                }
-
-                // Status text
                 Text(statusText)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.primary)
 
-                // Elapsed time
                 if isRecording, let start = recordingStartTime {
-                    TimelineView(.periodic(from: start, by: 1)) { context in
-                        let elapsed = max(0, Int(context.date.timeIntervalSince(start)))
-                        let minutes = elapsed / 60
-                        let seconds = elapsed % 60
-                        Text(String(format: "%d:%02d", minutes, seconds))
-                            .font(.system(size: 13, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
+                    elapsedTimer(start: start, size: 13)
                 }
 
-                // Audio level bars
                 if isRecording {
                     AudioLevelBars(level: audioLevel)
                         .frame(width: 40, height: 20)
                 }
 
-                // Success text preview
                 if case .success(let text) = status {
                     Text(text.count > 80 ? String(text.prefix(80)) + "..." : text)
                         .font(.system(size: 11))
@@ -62,7 +54,6 @@ struct RecordingOverlay: View {
                 }
             }
 
-            // Processing error warning
             if let processingError = processingError, case .success = status {
                 HStack(spacing: 4) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -75,7 +66,6 @@ struct RecordingOverlay: View {
                 }
             }
 
-            // Streaming transcription text (real-time during recording)
             if (!confirmedStreamingText.isEmpty || !hypothesisStreamingText.isEmpty) && (isRecording || isTranscribing) {
                 (Text(confirmedStreamingText).fontWeight(.medium) +
                  Text(hypothesisStreamingText).foregroundStyle(.secondary))
@@ -91,6 +81,101 @@ struct RecordingOverlay: View {
         .clipShape(.rect(cornerRadius: 12))
         .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
     }
+
+    // MARK: - Compact
+
+    private var compactOverlay: some View {
+        HStack(spacing: 8) {
+            micIndicator(size: 28, iconSize: 13)
+
+            if isRecording, let start = recordingStartTime {
+                elapsedTimer(start: start, size: 12)
+            }
+
+            if isRecording {
+                AudioLevelBars(level: audioLevel)
+                    .frame(width: 30, height: 14)
+            }
+
+            if isTranscribing {
+                ProgressView()
+                    .controlSize(.small)
+                Text(statusText)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            if case .success(let text) = status {
+                Text(text.count > 40 ? String(text.prefix(40)) + "..." : text)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            if case .error(let msg) = status {
+                Text(msg)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial)
+        .clipShape(.capsule)
+        .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
+    }
+
+    // MARK: - Minimal (dot)
+
+    private var minimalOverlay: some View {
+        ZStack {
+            Circle()
+                .fill(micColor.opacity(0.3))
+                .frame(width: 32, height: 32)
+                .scaleEffect(isRecording ? 1.0 + CGFloat(audioLevel) * 0.8 : 1.0)
+                .animation(.easeInOut(duration: 0.1), value: audioLevel)
+
+            Circle()
+                .fill(micColor)
+                .frame(width: 16, height: 16)
+
+            if isTranscribing {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .shadow(color: micColor.opacity(0.4), radius: 8)
+    }
+
+    // MARK: - Shared Components
+
+    private func micIndicator(size: CGFloat, iconSize: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .fill(micColor.opacity(0.2))
+                .frame(width: size, height: size)
+                .scaleEffect(isRecording ? 1.0 + CGFloat(audioLevel) * 0.5 : 1.0)
+                .animation(.easeInOut(duration: 0.1), value: audioLevel)
+
+            Image(systemName: micIconName)
+                .font(.system(size: iconSize, weight: .semibold))
+                .foregroundStyle(micColor)
+        }
+    }
+
+    private func elapsedTimer(start: Date, size: CGFloat) -> some View {
+        TimelineView(.periodic(from: start, by: 1)) { context in
+            let elapsed = max(0, Int(context.date.timeIntervalSince(start)))
+            let minutes = elapsed / 60
+            let seconds = elapsed % 60
+            Text(String(format: "%d:%02d", minutes, seconds))
+                .font(.system(size: size, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Computed
 
     private var isRecording: Bool {
         if case .recording = status { return true }

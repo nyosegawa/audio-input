@@ -124,6 +124,15 @@ struct SettingsView: View {
                 .help("現在のホットキー設定です。変更するにはアプリの再設定が必要です")
             }
 
+            Section("表示") {
+                Picker("オーバーレイスタイル", selection: $settings.overlayStyle) {
+                    ForEach(OverlayStyle.allCases, id: \.self) { style in
+                        Text(style.displayName).tag(style)
+                    }
+                }
+                .help("録音中のフィードバック表示スタイルを選択します")
+            }
+
             Section("一般") {
                 Toggle("ログイン時に起動", isOn: $settings.launchAtLogin)
                     .help("macOS起動時にAudioInputを自動的に起動します")

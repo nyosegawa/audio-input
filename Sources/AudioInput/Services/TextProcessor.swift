@@ -136,12 +136,20 @@ enum TextProcessingError: Error, LocalizedError {
     }
 }
 
+/// Context captured at recording start for context-aware text processing.
+struct InputContext: Sendable {
+    let selectedText: String
+    let appName: String
+
+    var isEmpty: Bool { selectedText.isEmpty && appName.isEmpty }
+}
+
 struct TextProcessor: Sendable {
     let apiKey: String
     let model: String
 
-    func process(text: String, mode: TextProcessingMode, customPrompt: String? = nil) async throws -> String {
-        let systemPrompt: String
+    func process(text: String, mode: TextProcessingMode, customPrompt: String? = nil, context: InputContext? = nil) async throws -> String {
+        var systemPrompt: String
         if mode == .custom {
             guard let custom = customPrompt, !custom.isEmpty else { return text }
             systemPrompt = """
@@ -153,6 +161,18 @@ struct TextProcessor: Sendable {
         } else {
             guard let prompt = mode.systemPrompt else { return text }
             systemPrompt = prompt
+        }
+
+        // Append context if available
+        if let ctx = context, !ctx.isEmpty {
+            var contextLines: [String] = []
+            if !ctx.appName.isEmpty {
+                contextLines.append("入力先アプリ: \(ctx.appName)")
+            }
+            if !ctx.selectedText.isEmpty {
+                contextLines.append("選択中のテキスト:\n\(ctx.selectedText)")
+            }
+            systemPrompt += "\n\n【コンテキスト情報（文体やトーンの参考にしてください）】\n" + contextLines.joined(separator: "\n")
         }
         guard !apiKey.isEmpty, !model.isEmpty else {
             AppLogger.log("[PROCESS] Skipped: apiKey.isEmpty=\(apiKey.isEmpty), model.isEmpty=\(model.isEmpty)")
