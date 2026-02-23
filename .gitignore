@@ -8,3 +8,5 @@ DerivedData/
 build/
 vendor/whisper/lib/
 vendor/whisper/.version
+.claude/
+!.claude/skills/
