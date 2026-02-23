@@ -680,6 +680,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - NSSound extension
 
+@MainActor
 extension NSSound {
     static let tink = NSSound(named: "Tink")
     static let pop = NSSound(named: "Pop")
