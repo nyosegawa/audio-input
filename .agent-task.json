@@ -1,0 +1,15 @@
+{
+  "description": "macOSメニューバー常駐のAI音声入力ツール。グローバルホットキーで録音→whisper.cpp/OpenAI/Geminiで音声認識→アクティブアプリにテキスト自動挿入。Swift 6 + SwiftUI。",
+  "commands": [
+    { "name": "Build", "command": "swift build" },
+    { "name": "Build App", "command": "./scripts/build-app.sh" },
+    { "name": "Build DMG", "command": "./scripts/build-dmg.sh" },
+    { "name": "Integration Test", "command": "./scripts/integration-test.sh" },
+    { "name": "Build whisper.cpp", "command": "./scripts/build-whisper-lib.sh" },
+    { "name": "Run App", "command": "open build/AudioInput.app" }
+  ],
+  "links": [
+    { "name": "GitHub", "url": "https://github.com/nyosegawa/audio-input" }
+  ],
+  "shortcuts": []
+}
